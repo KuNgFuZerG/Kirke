@@ -160,9 +160,21 @@
 
     async hentInnspill(menighetId) {
       return db.from('innspill')
-        .select('id, svar_tekst, sendt_tidspunkt, gudstjeneste!inner(id, tittel, dato_tid, menighet_id)')
+        .select(`id, svar_tekst, sendt_tidspunkt, krise, arkivert_at, kan_svare:svar_nokkel_hash,
+                 gudstjeneste!inner(id, tittel, dato_tid, menighet_id),
+                 prest_svar(id, tekst, sendt_tidspunkt)`)
         .eq('gudstjeneste.menighet_id', menighetId)
         .order('sendt_tidspunkt', { ascending: false });
+    },
+
+    /** Arkiverer (true) eller henter innspillet ut av arkivet (false). */
+    async arkiver(id, arkiver) {
+      return db.from('innspill').update({ arkivert_at: arkiver ? new Date().toISOString() : null }).eq('id', id).select('id');
+    },
+
+    /** Svar til avsenderen. Vises bare i appen på telefonen som sendte innspillet. */
+    async sendSvar(innspillId, tekst) {
+      return db.from('prest_svar').insert([{ innspill_id: innspillId, tekst }]).select('id');
     },
 
     async opprett(rad) {
@@ -289,6 +301,38 @@
     neiKnapp.focus();
   }
 
+  async function arkiverInnspill(innspill, arkiver, knapp) {
+    settOpptatt(knapp, true, arkiver ? 'Arkiverer …' : 'Flytter …');
+    const { data: ok, error } = await data.arkiver(innspill.id, arkiver);
+    if (error || !ok?.length) {
+      loggFeil('arkivering av innspill', error);
+      settOpptatt(knapp, false);
+      visMelding(`Innspillet ble ikke ${arkiver ? 'arkivert' : 'flyttet'}: ${forklarFeil(error || { message: 'Fant ikke innspillet.' })}`, 'feil');
+      return;
+    }
+    visMelding(arkiver ? 'Innspillet er arkivert.' : 'Innspillet er flyttet ut av arkivet.', 'ok');
+    await lastMenighet();
+  }
+
+  async function sendSvar(innspill, tekstfelt, knapp) {
+    const tekst = tekstfelt.value.trim();
+    if (!tekst) { visMelding('Skriv et svar før du sender.', 'feil'); tekstfelt.focus(); return; }
+    if (tekst.includes('[ditt telefonnummer]')) {
+      visMelding('Bytt ut «[ditt telefonnummer]» med nummeret ditt, eller fjern setningen.', 'feil');
+      tekstfelt.focus(); return;
+    }
+    settOpptatt(knapp, true, 'Sender …');
+    const { data: ok, error } = await data.sendSvar(innspill.id, tekst);
+    if (error || !ok?.length) {
+      loggFeil('svar til avsender', error);
+      settOpptatt(knapp, false);
+      visMelding(`Svaret ble ikke sendt: ${forklarFeil(error || { message: 'Ukjent feil.' })}`, 'feil');
+      return;
+    }
+    visMelding('Svaret er sendt. Avsenderen ser det neste gang appen åpnes på telefonen som sendte innspillet.', 'ok');
+    await lastMenighet();
+  }
+
   /** Samme mønster som for gudstjenester: bekreftelse inne i listen, ingen nettleservindu. */
   function visFjernBekreftelse(rad, innspill) {
     rad.querySelector('.bekreft-slett')?.remove();
@@ -318,6 +362,74 @@
     $('innspillTittel').focus?.();
   }
 
+  /** Forslag presten kan tilpasse når et innspill tyder på krise. */
+  const KRISEMAL = 'Takk for at du delte dette med meg. Det du skriver, høres tungt ut, og jeg vil gjerne snakke med deg. ' +
+    'Du kan nå meg på [ditt telefonnummer], eller ta kontakt etter gudstjenesten.\n\n' +
+    'Hvis det haster, kan du ringe Kirkens SOS på 22 40 00 40 eller Mental Helse på 116 123. Begge er døgnåpne. ' +
+    'Er livet i fare, ring 113.';
+
+  /** Ett innspill med tekst, eventuelle svar og handlingsknapper. */
+  function tegnEttInnspill(i, visGudstjeneste) {
+    const tid = kortDato.format(new Date(i.sendt_tidspunkt));
+    const rad = el('li', { class: `innspill${i.krise ? ' innspill-krise' : ''}` },
+      i.krise ? el('p', { class: 'krise-merke' }, 'Kan trenge oppfølging') : null,
+      el('blockquote', {}, i.svar_tekst),
+      el('p', { class: 'innspill-tid' },
+        visGudstjeneste ? `Sendt ${tid} til ${i.gudstjeneste.tittel}, ${lesbarDato(i.gudstjeneste.dato_tid)}` : `Sendt ${tid}`),
+    );
+
+    const svar = [...(i.prest_svar || [])].sort((a, b) => new Date(a.sendt_tidspunkt) - new Date(b.sendt_tidspunkt));
+    if (svar.length) {
+      rad.append(el('div', { class: 'prest-svar' },
+        el('p', { class: 'felt-tittel' }, svar.length === 1 ? 'Ditt svar' : 'Dine svar'),
+        svar.map((s) => el('div', { class: 'prest-svar-tekst' },
+          el('p', {}, s.tekst),
+          el('p', { class: 'innspill-tid' }, `Sendt ${kortDato.format(new Date(s.sendt_tidspunkt))}`),
+        )),
+      ));
+    }
+
+    const knapper = el('div', { class: 'knapperad' });
+    if (i.kan_svare) {
+      knapper.append(el('button', { type: 'button', class: 'knapp-lenke', onclick: () => visSvarSkjema(rad, i),
+        'aria-label': `Svar avsenderen av innspill sendt ${tid}` }, 'Svar avsenderen'));
+    }
+    knapper.append(el('button', { type: 'button', class: 'knapp-lenke', onclick: (e) => arkiverInnspill(i, !i.arkivert_at, e.currentTarget),
+      'aria-label': `${i.arkivert_at ? 'Flytt ut av arkivet' : 'Arkiver'} innspill sendt ${tid}` },
+      i.arkivert_at ? 'Flytt ut av arkivet' : 'Arkiver'));
+    knapper.append(el('button', { type: 'button', class: 'knapp-lenke fare', onclick: () => visFjernBekreftelse(rad, i),
+      'aria-label': `Fjern innspill sendt ${tid}` }, 'Fjern'));
+    rad.append(knapper);
+    return rad;
+  }
+
+  function visSvarSkjema(rad, innspill) {
+    if (rad.querySelector('.svar-skjema')) { rad.querySelector('.svar-skjema textarea').focus(); return; }
+    const id = `svar-${innspill.id}`;
+    const tekstfelt = el('textarea', { id, maxlength: '2000', 'aria-describedby': `${id}-hjelp` });
+    const sendKnapp = el('button', { type: 'submit', class: 'knapp' }, 'Send svar');
+    const avbryt = el('button', { type: 'button', class: 'knapp knapp-rolig' }, 'Avbryt');
+    const skjema = el('form', { class: 'svar-skjema skjema', novalidate: true },
+      el('div', { class: 'felt' },
+        el('label', { for: id }, 'Svar til avsenderen'),
+        tekstfelt,
+        el('p', { class: 'hjelp', id: `${id}-hjelp` },
+          'Avsenderen ser svaret bare i appen på telefonen som sendte innspillet, neste gang appen åpnes. Ikke regn med at det leses raskt.'),
+      ),
+      el('div', { class: 'knapperad' },
+        innspill.krise ? el('button', { type: 'button', class: 'knapp knapp-rolig', onclick: () => {
+          tekstfelt.value = KRISEMAL; tekstfelt.focus();
+          const pos = KRISEMAL.indexOf('[ditt telefonnummer]');
+          tekstfelt.setSelectionRange(pos, pos + '[ditt telefonnummer]'.length);
+        } }, 'Bruk forslag til krisesvar') : null,
+        sendKnapp, avbryt),
+    );
+    avbryt.addEventListener('click', () => { skjema.remove(); rad.querySelector('.knapp-lenke')?.focus(); });
+    skjema.addEventListener('submit', (e) => { e.preventDefault(); sendSvar(innspill, tekstfelt, sendKnapp); });
+    rad.querySelector('.knapperad').before(skjema);
+    tekstfelt.focus();
+  }
+
   function tegnInnspill(rader) {
     const liste = $('innspillListe');
     liste.removeAttribute('aria-busy');
@@ -327,36 +439,48 @@
       return;
     }
 
-    // Grupper per gudstjeneste, nyeste gudstjeneste først.
+    const krise = rader.filter((r) => r.krise && !r.arkivert_at);
+    const vanlige = rader.filter((r) => !r.krise && !r.arkivert_at);
+    const arkiv = rader.filter((r) => r.arkivert_at);
+    const deler = [];
+
+    // Innspill som kan tyde på krise, øverst og tydelig merket.
+    if (krise.length) {
+      deler.push(el('section', { class: 'innspill-gruppe krise-gruppe', 'aria-labelledby': 'kriseTittel' },
+        el('h3', { id: 'kriseTittel' }, `Trenger kanskje oppfølging (${krise.length})`),
+        el('p', { class: 'hjelp' }, 'Disse innspillene inneholder ord som kan tyde på at noen har det svært vanskelig. Når slike ord skrives, viser appen avsenderen nummer til Kirkens SOS, Mental Helse og 113 med en gang.'),
+        el('ul', { class: 'innspill-liste' }, krise.map((i) => tegnEttInnspill(i, true))),
+      ));
+    }
+
+    // Vanlige innspill, gruppert per gudstjeneste, nyeste gudstjeneste først.
     const grupper = new Map();
-    for (const r of rader) {
+    for (const r of vanlige) {
       const g = r.gudstjeneste;
       if (!grupper.has(g.id)) grupper.set(g.id, { g, innspill: [] });
       grupper.get(g.id).innspill.push(r);
     }
-    const sortert = [...grupper.values()].sort((a, b) => new Date(b.g.dato_tid) - new Date(a.g.dato_tid));
-
-    liste.replaceChildren(...sortert.map(({ g, innspill }) =>
-      el('section', { class: 'innspill-gruppe', 'aria-label': `Innspill til ${g.tittel}` },
+    [...grupper.values()].sort((a, b) => new Date(b.g.dato_tid) - new Date(a.g.dato_tid)).forEach(({ g, innspill }) => {
+      deler.push(el('section', { class: 'innspill-gruppe', 'aria-label': `Innspill til ${g.tittel}` },
         el('h3', {}, g.tittel),
-        el('p', { class: 'gudstjeneste-dato' },
-          `${lesbarDato(g.dato_tid)} (${innspill.length} innspill)`),
-        el('ul', { class: 'innspill-liste' },
-          innspill.map((i) => {
-            const sendt = `Sendt ${kortDato.format(new Date(i.sendt_tidspunkt))}`;
-            const rad = el('li', { class: 'innspill' },
-              el('blockquote', {}, i.svar_tekst),
-              el('p', { class: 'innspill-tid' }, sendt),
-            );
-            rad.append(el('div', { class: 'knapperad' },
-              el('button', { type: 'button', class: 'knapp-lenke fare', onclick: () => visFjernBekreftelse(rad, i),
-                'aria-label': `Fjern innspill sendt ${kortDato.format(new Date(i.sendt_tidspunkt))}` }, 'Fjern'),
-            ));
-            return rad;
-          }),
-        ),
-      ),
-    ));
+        el('p', { class: 'gudstjeneste-dato' }, `${lesbarDato(g.dato_tid)} (${innspill.length} innspill)`),
+        el('ul', { class: 'innspill-liste' }, innspill.map((i) => tegnEttInnspill(i, false))),
+      ));
+    });
+
+    if (!krise.length && !vanlige.length) {
+      deler.push(el('p', { class: 'tomt' }, 'Ingen nye innspill. Arkiverte innspill ligger nedenfor.'));
+    }
+
+    // Arkiv, sammenslått som standard.
+    if (arkiv.length) {
+      deler.push(el('details', { class: 'arkiv' },
+        el('summary', {}, `Arkiv (${arkiv.length})`),
+        el('ul', { class: 'innspill-liste' }, arkiv.map((i) => tegnEttInnspill(i, true))),
+      ));
+    }
+
+    liste.replaceChildren(...deler);
   }
 
   // ---------------------------------------------------------------------------
