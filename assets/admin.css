@@ -7,18 +7,18 @@
 :root {
   --kalk: #F7F8F6;        /* bakgrunn */
   --flate: #FFFFFF;       /* skjema- og listeflater */
-  --blekk: #1F2A27;       /* brødtekst – 14.0:1 mot kalk */
-  --dempet: #4F5C57;      /* hjelpetekst – 6.6:1 mot kalk */
-  --gronn: #2F5D4A;       /* hovedfarge, knapper – 7.4:1 mot hvit */
+  --blekk: #1F2A27;       /* brødtekst – 13.9:1 mot kalk */
+  --dempet: #4F5C57;      /* hjelpetekst – 6.6:1 mot kalk, 7.0:1 mot hvit */
+  --gronn: #2F5D4A;       /* hovedfarge, knapper – 7.5:1 mot hvit tekst */
   --gronn-mork: #234638;  /* hover */
   --gronn-lys: #E6EEEA;   /* rolige markeringer */
   --linje: #C9D3CE;       /* skillelinjer (dekor) */
-  --kant: #6B7A74;        /* feltkanter – 4.4:1, over 3:1-kravet for komponenter */
-  --feil: #A3261F;        /* 6.6:1 mot hvit */
+  --kant: #6B7A74;        /* feltkanter – 4.5:1, over 3:1-kravet for komponenter */
+  --feil: #A3261F;        /* 7.4:1 mot hvit */
   --feil-lys: #FBECEA;
   --ok: #24563F;
   --ok-lys: #E5F1EA;
-  --fokus: #1B4FA0;       /* fokusring – skiller seg fra grønt, 7.6:1 */
+  --fokus: #1B4FA0;       /* fokusring – skiller seg fra grønt, 7.4:1 */
 
   --skrift: 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --skrift-stemme: 'Source Serif 4', Georgia, 'Times New Roman', serif;

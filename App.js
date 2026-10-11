@@ -1,139 +1,395 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, SafeAreaView, Alert } from 'react-native';
+/**
+ * KirkePulsen – menighetsappen.
+ *
+ * Viser neste gudstjeneste i én menighet og lar hvem som helst sende et anonymt
+ * innspill til presten. Databasen sørger for at innspill bare kan leses av prester
+ * i menigheten (se supabase/migrations/), så appen trenger ingen innlogging.
+ *
+ * Inndeling:
+ *   1. Oppsett
+ *   2. Farger og hjelpefunksjoner
+ *   3. Data – alle kall mot Supabase samlet ett sted
+ *   4. Komponenter
+ *   5. Stiler
+ *
+ * Tilgjengelighet: all tekst skalerer med enhetens skriftstørrelse (ingen faste høyder
+ * på tekstbokser), alle trykkflater er minst 48 punkter og har accessibilityRole/-Label,
+ * og viktige endringer leses opp for skjermlesere.
+ */
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { createClient } from '@supabase/supabase-js';
 
-// 1. Kobling til Supabase (Dine ekte verdier)
+// -----------------------------------------------------------------------------
+// 1. Oppsett
+// -----------------------------------------------------------------------------
+
+// Prosjektet "Broen" (esjmuewxbhrbcgktxiis). Ikke bruk "Broen - første".
 const SUPABASE_URL = 'https://esjmuewxbhrbcgktxiis.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_A3k2xBiT15N4S9NPunqHoA_Mn8Xskxk';
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Publishable-nøkkelen er laget for å ligge i apper. Sikkerheten ligger i tilgangsreglene.
+const SUPABASE_KEY = 'sb_publishable_A3k2xBiT15N4S9NPunqHoA_Mn8Xskxk';
 
-export default function App() {
-  const [nesteGudstjeneste, setNesteGudstjeneste] = useState(null);
-  const [svarTekst, setSvarTekst] = useState('');
-  const [innsendt, setInnsendt] = useState(false);
+// Hvilken menighet appen viser. Når appen blir en modul i Broen, kommer denne
+// fra brukerens valgte menighet i stedet for å stå fast her.
+const MENIGHET_ID = '00517202-3578-480c-9e62-b3469f90c442'; // Høvåg kirke
 
-  useEffect(() => {
-    hentNesteGudstjeneste();
-  }, []);
+const MAKS_TEGN = 2000;
 
-  async function hentNesteGudstjeneste() {
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: false }, // appen logger aldri inn
+});
+
+// -----------------------------------------------------------------------------
+// 2. Farger og hjelpefunksjoner (samme palett som prestens side)
+// -----------------------------------------------------------------------------
+
+const farge = {
+  kalk: '#F7F8F6',      // bakgrunn
+  flate: '#FFFFFF',
+  blekk: '#1F2A27',     // tekst – 13.9:1
+  dempet: '#4F5C57',    // hjelpetekst – 6.6:1
+  gronn: '#2F5D4A',     // knapp – 7.5:1 mot hvit tekst
+  gronnLys: '#E6EEEA',
+  kant: '#6B7A74',      // feltkant – over 3:1
+  feil: '#A3261F',
+  feilLys: '#FBECEA',
+  ok: '#24563F',
+  okLys: '#E5F1EA',
+};
+
+/** "søndag 18. oktober kl. 11:00" */
+function lesbarDato(iso) {
+  const d = new Date(iso);
+  const dag = d.toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' });
+  const tid = d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
+  return `${dag} kl. ${tid}`;
+}
+
+function les(tekst) {
+  AccessibilityInfo.announceForAccessibility?.(tekst);
+}
+
+// -----------------------------------------------------------------------------
+// 3. Data
+// -----------------------------------------------------------------------------
+
+const data = {
+  /** Neste gudstjeneste i menigheten (inkludert en som startet for under 3 timer siden). */
+  async hentNeste(menighetId) {
+    const fra = new Date(Date.now() - 3 * 3600 * 1000).toISOString();
+    return supabase
+      .from('gudstjeneste')
+      .select('id, tittel, beskrivelse, sporsmal_fra_prest, dato_tid, svarfrist, menighet(navn)')
+      .eq('menighet_id', menighetId)
+      .gte('dato_tid', fra)
+      .order('dato_tid', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+  },
+
+  /** Sender et anonymt innspill. Returnerer bare om det gikk – innspill kan ikke leses tilbake. */
+  async sendInnspill(gudstjenesteId, tekst) {
+    return supabase.from('innspill').insert([{ gudstjeneste_id: gudstjenesteId, svar_tekst: tekst }]);
+  },
+};
+
+// -----------------------------------------------------------------------------
+// 4. Komponenter
+// -----------------------------------------------------------------------------
+
+function Knapp({ tittel, onPress, opptatt = false, deaktivert = false, hint }) {
+  const av = deaktivert || opptatt;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={av}
+      accessibilityRole="button"
+      accessibilityLabel={tittel}
+      accessibilityHint={hint}
+      accessibilityState={{ disabled: av, busy: opptatt }}
+      style={({ pressed }) => [stil.knapp, pressed && stil.knappTrykket, av && stil.knappAv]}
+    >
+      {opptatt ? <ActivityIndicator color="#FFFFFF" style={stil.knappSpinner} /> : null}
+      <Text style={stil.knappTekst}>{tittel}</Text>
+    </Pressable>
+  );
+}
+
+function Melding({ type, children }) {
+  return (
+    <View
+      style={[stil.melding, type === 'feil' ? stil.meldingFeil : stil.meldingOk]}
+      accessibilityRole={type === 'feil' ? 'alert' : 'text'}
+      accessibilityLiveRegion="polite"
+    >
+      <Text style={[stil.meldingTekst, { color: type === 'feil' ? farge.feil : farge.ok }]}>{children}</Text>
+    </View>
+  );
+}
+
+function SvarSkjema({ gudstjeneste }) {
+  const [tekst, setTekst] = useState('');
+  const [status, setStatus] = useState('klar'); // klar | sender | sendt | feil
+  const [feilmelding, setFeilmelding] = useState('');
+
+  const fristPassert = gudstjeneste.svarfrist && new Date(gudstjeneste.svarfrist) < new Date();
+
+  if (fristPassert) {
+    return (
+      <Melding type="info">
+        Svarfristen for denne gudstjenesten er passert. Du kan svare på neste gudstjeneste når presten har publisert den.
+      </Melding>
+    );
+  }
+
+  if (status === 'sendt') {
+    return (
+      <View style={stil.takk}>
+        <Melding type="ok">Takk. Innspillet ditt er sendt til presten.</Melding>
+        <Pressable
+          onPress={() => { setTekst(''); setStatus('klar'); }}
+          accessibilityRole="button"
+          style={stil.lenkeKnapp}
+        >
+          <Text style={stil.lenkeTekst}>Send et innspill til</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  async function send() {
+    const renTekst = tekst.trim();
+    if (!renTekst) {
+      setStatus('feil');
+      setFeilmelding('Skriv noe før du sender.');
+      les('Skriv noe før du sender.');
+      return;
+    }
+    setStatus('sender');
     try {
-      const { data, error } = await supabase
-        .from('gudstjeneste')
-        .select('*')
-        .order('dato_tid', { ascending: true })
-        .limit(1)
-        .single();
-
-      if (data) {
-        setNesteGudstjeneste(data);
-      }
+      const { error } = await data.sendInnspill(gudstjeneste.id, renTekst);
+      if (error) throw error;
+      setStatus('sendt');
+      les('Innspillet ditt er sendt til presten.');
     } catch (err) {
-      console.log('Kunne ikke hente gudstjeneste:', err);
+      console.log('[KirkePulsen] Kunne ikke sende innspill:', err?.code, err?.message);
+      const melding = /fetch|network/i.test(err?.message ?? '')
+        ? 'Fikk ikke kontakt. Sjekk nettforbindelsen og prøv igjen. Teksten din er tatt vare på.'
+        : 'Innspillet ble ikke sendt. Prøv igjen om litt. Teksten din er tatt vare på.';
+      setStatus('feil');
+      setFeilmelding(melding);
+      les(melding);
     }
   }
 
-  async function sendInnspill() {
-    if (!svarTekst.trim()) {
-      Alert.alert('Vennligst skriv et svar før du sender inn.');
-      return;
-    }
+  const igjen = MAKS_TEGN - tekst.length;
 
+  return (
+    <View style={stil.skjema}>
+      <Text style={stil.feltTittel} nativeID="svarEtikett">Ditt svar</Text>
+      <TextInput
+        style={[stil.tekstfelt, status === 'feil' && !tekst.trim() && stil.tekstfeltFeil]}
+        multiline
+        value={tekst}
+        onChangeText={(t) => { setTekst(t); if (status === 'feil') setStatus('klar'); }}
+        maxLength={MAKS_TEGN}
+        placeholder="Skriv en tanke, et spørsmål eller et bønneemne"
+        placeholderTextColor={farge.dempet}
+        textAlignVertical="top"
+        accessibilityLabel="Ditt svar til presten"
+        accessibilityLabelledBy="svarEtikett"
+        accessibilityHint="Svaret sendes anonymt"
+        editable={status !== 'sender'}
+      />
+      <Text style={stil.hjelp} accessibilityLiveRegion={igjen < 100 ? 'polite' : 'none'}>
+        {igjen < 200 ? `${igjen} tegn igjen` : 'Svaret er anonymt. Bare presten i menigheten kan lese det.'}
+      </Text>
+
+      {status === 'feil' ? <Melding type="feil">{feilmelding}</Melding> : null}
+
+      <Knapp
+        tittel={status === 'sender' ? 'Sender …' : 'Send til presten'}
+        onPress={send}
+        opptatt={status === 'sender'}
+        hint="Sender svaret ditt anonymt"
+      />
+    </View>
+  );
+}
+
+export default function App() {
+  const [gudstjeneste, setGudstjeneste] = useState(null);
+  const [status, setStatus] = useState('laster'); // laster | klar | tom | feil
+  const [oppdaterer, setOppdaterer] = useState(false);
+
+  const hent = useCallback(async () => {
     try {
-      const { error } = await supabase.from('innspill').insert([
-        {
-          gudstjeneste_id: nesteGudstjeneste.id,
-          svar_tekst: svarTekst,
-        },
-      ]);
-
+      const { data: rad, error } = await data.hentNeste(MENIGHET_ID);
       if (error) throw error;
-
-      setInnsendt(true);
-      Alert.alert('Takk!', 'Ditt innspill er sendt direkte og kryptert til presten.');
+      setGudstjeneste(rad);
+      setStatus(rad ? 'klar' : 'tom');
     } catch (err) {
-      Alert.alert('Feil', 'Kunne ikke sende innspill. Prøv igjen senere.');
+      console.log('[KirkePulsen] Kunne ikke hente gudstjeneste:', err?.code, err?.message);
+      setStatus('feil');
     }
+  }, []);
+
+  useEffect(() => { hent(); }, [hent]);
+
+  async function dra() {
+    setOppdaterer(true);
+    await hent();
+    setOppdaterer(false);
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        
-        {/* Header / Tittel */}
-        <View style={styles.header}>
-          <Text style={styles.tittel}>KirkePulsen</Text>
-          <Text style={styles.underTittel}>Dialog mellom menighet og prest</Text>
-        </View>
-
-        {/* Fremhevet kort for neste gudstjeneste */}
-        {nesteGudstjeneste ? (
-          <View style={styles.kortFremhevet}>
-            <Text style={styles.kortEtikett}>NESTE GUDSTJENESTE</Text>
-            <Text style={styles.gudstjenesteTittel}>{nesteGudstjeneste.tittel}</Text>
-            <Text style={styles.datoTekst}>
-              📅 {new Date(nesteGudstjeneste.dato_tid).toLocaleDateString('no-NO', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+    <SafeAreaView style={stil.side}>
+      <KeyboardAvoidingView style={stil.side} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          contentContainerStyle={stil.innhold}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={<RefreshControl refreshing={oppdaterer} onRefresh={dra} tintColor={farge.gronn} />}
+        >
+          <View style={stil.topp}>
+            <Text style={stil.merke} accessibilityRole="header">KirkePulsen</Text>
+            <Text style={stil.underTittel}>
+              {gudstjeneste?.menighet?.navn ?? 'Fra menigheten til presten'}
             </Text>
-            
-            {/* Prestens spørsmål */}
-            <View style={styles.sporsmalBoks}>
-              <Text style={styles.sporsmalTittel}>Prestens spørsmål til ukens preken:</Text>
-              <Text style={styles.sporsmalTekst}>
-                "{nesteGudstjeneste.sporsmal_fra_prest || 'Ingen spørsmål registrert enna.'}"
+          </View>
+
+          {status === 'laster' ? (
+            <View style={stil.sentrert} accessibilityLabel="Henter neste gudstjeneste" accessible>
+              <ActivityIndicator size="large" color={farge.gronn} />
+              <Text style={stil.hjelp}>Henter neste gudstjeneste …</Text>
+            </View>
+          ) : null}
+
+          {status === 'feil' ? (
+            <View style={stil.kort}>
+              <Melding type="feil">Fikk ikke hentet gudstjenesten. Sjekk nettforbindelsen.</Melding>
+              <Knapp tittel="Prøv igjen" onPress={() => { setStatus('laster'); hent(); }} />
+            </View>
+          ) : null}
+
+          {status === 'tom' ? (
+            <View style={stil.kort}>
+              <Text style={stil.tittel} accessibilityRole="header">Ingen kommende gudstjeneste ennå</Text>
+              <Text style={stil.brodtekst}>
+                Når presten publiserer neste gudstjeneste, kan du svare på spørsmålet her. Dra ned for å sjekke på nytt.
               </Text>
             </View>
+          ) : null}
 
-            {/* Svarskjema */}
-            {!innsendt ? (
-              <View style={styles.svarsBoks}>
-                <TextInput
-                  style={styles.tekstfelt}
-                  placeholder="Skriv din tanke eller bønneemne her..."
-                  placeholderTextColor="#666"
-                  multiline
-                  value={svarTekst}
-                  onChangeText={setSvarTekst}
-                />
-                <TouchableOpacity style={styles.sendKnapp} onPress={sendInnspill}>
-                  <Text style={styles.sendKnappTekst}>Send innspill til presten</Text>
-                </TouchableOpacity>
-                <Text style={styles.personvernTekst}>🔒 Svaret sendes kryptert og leses kun av presten.</Text>
-              </View>
-            ) : (
-              <View style={styles.takkBoks}>
-                <Text style={styles.takkTekst}>✅ Takk for ditt bidrag! Svaret er mottatt.</Text>
-              </View>
-            )}
+          {status === 'klar' && gudstjeneste ? (
+            <View style={stil.kort}>
+              <Text style={stil.dato}>{lesbarDato(gudstjeneste.dato_tid)}</Text>
+              <Text style={stil.tittel} accessibilityRole="header">{gudstjeneste.tittel}</Text>
+              {gudstjeneste.beskrivelse ? <Text style={stil.brodtekst}>{gudstjeneste.beskrivelse}</Text> : null}
 
-          </View>
-        ) : (
-          <Text style={styles.lasterTekst}>Laster kommende gudstjenester...</Text>
-        )}
+              {gudstjeneste.sporsmal_fra_prest ? (
+                <View style={stil.sporsmal} accessible accessibilityLabel={`Prestens spørsmål: ${gudstjeneste.sporsmal_fra_prest}`}>
+                  <Text style={stil.sporsmalEtikett}>Prestens spørsmål</Text>
+                  <Text style={stil.sporsmalTekst}>{gudstjeneste.sporsmal_fra_prest}</Text>
+                </View>
+              ) : null}
 
-      </ScrollView>
+              {gudstjeneste.svarfrist && new Date(gudstjeneste.svarfrist) > new Date() ? (
+                <Text style={stil.hjelp}>Du kan svare til {lesbarDato(gudstjeneste.svarfrist)}.</Text>
+              ) : null}
+
+              <SvarSkjema key={gudstjeneste.id} gudstjeneste={gudstjeneste} />
+            </View>
+          ) : null}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F4F6F8' },
-  scroll: { padding: 20 },
-  header: { marginBottom: 20, alignItems: 'center' },
-  tittel: { fontSize: 28, fontWeight: 'bold', color: '#1A202C' },
-  underTittel: { fontSize: 14, color: '#4A5568', marginTop: 4 },
-  kortFremhevet: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 20, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 4 },
-  kortEtikett: { fontSize: 12, fontWeight: 'bold', color: '#3182CE', letterSpacing: 1, marginBottom: 8 },
-  gudstjenesteTittel: { fontSize: 22, fontWeight: 'bold', color: '#2D3748', marginBottom: 6 },
-  datoTekst: { fontSize: 14, color: '#718096', marginBottom: 16 },
-  sporsmalBoks: { backgroundColor: '#EBF8FF', borderRadius: 10, padding: 14, marginBottom: 16 },
-  sporsmalTittel: { fontSize: 13, fontWeight: 'bold', color: '#2B6CB0', marginBottom: 4 },
-  sporsmalTekst: { fontSize: 16, fontStyle: 'italic', color: '#2D3748', lineHeight: 22 },
-  svarsBoks: { marginTop: 10 },
-  tekstfelt: { backgroundColor: '#F7FAFC', borderWidth: 1, borderColor: '#CBD5E0', borderRadius: 8, padding: 12, height: 100, textAlignVertical: 'top', fontSize: 16, color: '#2D3748', marginBottom: 12 },
-  sendKnapp: { backgroundColor: '#3182CE', borderRadius: 8, padding: 14, alignItems: 'center' },
-  sendKnappTekst: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
-  personvernTekst: { fontSize: 12, color: '#718096', textAlign: 'center', marginTop: 10 },
-  takkBoks: { padding: 16, backgroundColor: '#F0FFF4', borderRadius: 8, alignItems: 'center' },
-  takkTekst: { color: '#22543D', fontWeight: 'bold', fontSize: 16 },
-  lasterTekst: { textAlign: 'center', color: '#718096', marginTop: 40 }
+// -----------------------------------------------------------------------------
+// 5. Stiler
+// Ingen faste høyder på tekst – alt vokser med skriftstørrelsen på enheten.
+// -----------------------------------------------------------------------------
+
+const stil = StyleSheet.create({
+  side: { flex: 1, backgroundColor: farge.kalk },
+  innhold: { padding: 20, paddingBottom: 48, maxWidth: 640, width: '100%', alignSelf: 'center' },
+
+  topp: { marginBottom: 24, paddingTop: 8 },
+  merke: { fontSize: 20, fontWeight: '700', color: farge.blekk },
+  underTittel: { fontSize: 16, color: farge.dempet, marginTop: 2 },
+
+  sentrert: { alignItems: 'center', paddingVertical: 48, gap: 12 },
+
+  kort: {
+    backgroundColor: farge.flate,
+    borderRadius: 14,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#DDE3E0',
+  },
+  dato: { fontSize: 15, color: farge.dempet, marginBottom: 4 },
+  tittel: {
+    fontSize: 24, lineHeight: 30, fontWeight: '600', color: farge.blekk, marginBottom: 8,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: undefined }),
+  },
+  brodtekst: { fontSize: 17, lineHeight: 26, color: farge.blekk, marginBottom: 12 },
+
+  sporsmal: {
+    marginTop: 8, marginBottom: 16,
+    paddingVertical: 14, paddingLeft: 16, paddingRight: 12,
+    borderLeftWidth: 3, borderLeftColor: farge.gronn,
+    backgroundColor: farge.gronnLys, borderRadius: 6,
+  },
+  sporsmalEtikett: { fontSize: 15, fontWeight: '700', color: farge.gronn, marginBottom: 6 },
+  sporsmalTekst: {
+    fontSize: 19, lineHeight: 29, color: farge.blekk,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: undefined }),
+  },
+
+  skjema: { marginTop: 16, gap: 10 },
+  feltTittel: { fontSize: 17, fontWeight: '700', color: farge.blekk },
+  tekstfelt: {
+    minHeight: 120,
+    backgroundColor: farge.flate,
+    borderWidth: 1.5, borderColor: farge.kant, borderRadius: 8,
+    paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 17, lineHeight: 24, color: farge.blekk,
+  },
+  tekstfeltFeil: { borderColor: farge.feil },
+  hjelp: { fontSize: 15, lineHeight: 21, color: farge.dempet },
+
+  knapp: {
+    minHeight: 52,
+    backgroundColor: farge.gronn, borderRadius: 8,
+    paddingHorizontal: 20, paddingVertical: 14,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginTop: 4,
+  },
+  knappTrykket: { backgroundColor: '#234638' },
+  knappAv: { opacity: 0.75 },
+  knappSpinner: { marginRight: 10 },
+  knappTekst: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+
+  melding: { borderLeftWidth: 4, borderRadius: 6, padding: 14, marginVertical: 4 },
+  meldingFeil: { backgroundColor: farge.feilLys, borderLeftColor: farge.feil },
+  meldingOk: { backgroundColor: farge.okLys, borderLeftColor: farge.ok },
+  meldingTekst: { fontSize: 16, lineHeight: 23 },
+
+  takk: { marginTop: 16, gap: 8 },
+  lenkeKnapp: { minHeight: 48, justifyContent: 'center' },
+  lenkeTekst: { fontSize: 17, color: farge.gronn, textDecorationLine: 'underline', fontWeight: '600' },
 });
