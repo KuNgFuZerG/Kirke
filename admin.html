@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KirkePulsen - Prestens Dashbord</title>
-    <!-- Supabase Bibliotek -->
+    <!-- Supabase JS Client library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: Arial, sans-serif; background-color: #F4F6F8; color: #2D3748; margin: 0; padding: 20px; }
@@ -54,12 +54,12 @@
 </div>
 
 <script>
-    // Kobling til Supabase
     const SUPABASE_URL = 'https://esjmuexwbhrbgcktiis.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_A3k2xBiT15N4S9NPunqHoA_Mn8Xskxk';
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    
+    // Korrekt oprettelse af klienten uden navnekonflikt
+    const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Sett standarddato til neste søndag kl 11:00
     window.onload = function() {
         const d = new Date();
         d.setDate(d.getDate() + (7 - d.getDay()) % 7);
@@ -80,14 +80,23 @@
         }
 
         try {
-            // Hent menighet-ID for Høvåg kirke
-            const { data: menighetData, error: mError } = await supabaseClient.from('menighet').select('id').limit(1).single();
-            if (mError || !menighetData) {
-                alert('Fant ikke menighet i databasen: ' + (mError ? mError.message : 'Tom retur'));
+            const { data: menighetData, error: mError } = await _supabase
+                .from('menighet')
+                .select('id')
+                .limit(1)
+                .maybeSingle();
+
+            if (mError) {
+                alert('Databasefeil ved henting av menighet: ' + mError.message);
                 return;
             }
 
-            const { error } = await supabaseClient.from('gudstjeneste').insert([
+            if (!menighetData) {
+                alert('Ingen menighet ble funnet i databasen.');
+                return;
+            }
+
+            const { error } = await _supabase.from('gudstjeneste').insert([
                 {
                     menighet_id: menighetData.id,
                     tittel: tittel,
@@ -105,13 +114,13 @@
                 location.reload();
             }
         } catch (err) {
-            alert('Det oppstod en uventet feil: ' + err.message);
+            alert('Uventet feil: ' + err);
         }
     }
 
     async function hentInnspill() {
         try {
-            const { data, error } = await supabaseClient
+            const { data, error } = await _supabase
                 .from('innspill')
                 .select('*, gudstjeneste(tittel)')
                 .order('sendt_tidspunkt', { ascending: false });
