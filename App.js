@@ -285,7 +285,11 @@ function SvarSkjema({ gudstjeneste, onSendt }) {
     } catch (err) {
       console.log('[KirkePulsen] Kunne ikke sende innspill:', err?.code, err?.message);
       // 42501: databasen avviste innspillet, normalt fordi svarfristen gikk ut mens appen var åpen.
-      const melding = err?.message === 'innspill_avvist_ordliste'
+      const melding = err?.message === 'innspill_avvist_grense'
+        ? 'Det er sendt veldig mange innspill akkurat nå, så ditt ble ikke sendt. Prøv igjen om noen minutter. Teksten din er tatt vare på.'
+        : err?.message === 'innspill_avvist_duplikat'
+        ? 'Akkurat det samme innspillet er allerede sendt, så presten har fått det.'
+        : err?.message === 'innspill_avvist_ordliste'
         ? 'Innspillet inneholder ord som ikke er tillatt, og ble ikke sendt. Skriv det gjerne om. Teksten din er tatt vare på.'
         : err?.code === '42501'
         ? 'Svarfristen er passert, så innspillet ble ikke sendt. Du kan svare på neste gudstjeneste når presten har publisert den.'
