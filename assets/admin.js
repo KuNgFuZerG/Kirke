@@ -255,11 +255,13 @@
           g.beskrivelse ? el('p', { class: 'gudstjeneste-tema' }, g.beskrivelse) : null,
           g.sporsmal_fra_prest ? null : el('p', { class: 'gudstjeneste-mangler' }, 'Mangler spørsmål til menigheten.'),
         );
+        // Skjermlesertekst må skille gudstjenester med samme tittel og tid, så temaet tas med.
+        const beskrivende = [g.tittel, lesbarDato(g.dato_tid), g.beskrivelse || 'uten tema'].join(', ');
         const handlinger = el('div', { class: 'knapperad' },
           el('button', { type: 'button', class: 'knapp-lenke', onclick: () => startRedigering(g),
-            'aria-label': `Endre ${g.tittel}, ${lesbarDato(g.dato_tid)}` }, 'Endre'),
+            'aria-label': `Endre ${beskrivende}` }, 'Endre'),
           el('button', { type: 'button', class: 'knapp-lenke fare', onclick: () => visSlettBekreftelse(rad, g),
-            'aria-label': `Slett ${g.tittel}, ${lesbarDato(g.dato_tid)}` }, 'Slett'),
+            'aria-label': `Slett ${beskrivende}` }, 'Slett'),
         );
         rad.append(handlinger);
         return rad;
