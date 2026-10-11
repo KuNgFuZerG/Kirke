@@ -32,6 +32,7 @@ import {
   RefreshControl,
   SafeAreaView,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -108,6 +109,19 @@ function les(tekst) {
   AccessibilityInfo.announceForAccessibility?.(tekst);
 }
 
+/** Lar avsenderen lagre prestens svar selv, f.eks. i Notater. Det er deres egen kopi. */
+async function taVarePaSvar(s) {
+  const tekst = `Svar fra presten (${lesbarDato(s.svar_tidspunkt)}):\n\n${s.svar_tekst}`;
+  try {
+    await Share.share({ message: tekst });
+  } catch (e) {
+    try {
+      await globalThis.navigator?.clipboard?.writeText(tekst);
+      les('Svaret er kopiert.');
+    } catch (e2) { console.log('[KirkePulsen] Kunne ikke dele svaret:', e2?.message); }
+  }
+}
+
 function harKriseord(tekst) {
   const t = tekst.toLowerCase();
   return KRISEORD.some((k) => t.includes(k));
@@ -154,7 +168,7 @@ const data = {
   /** Henter svar fra presten på innspillene som er sendt fra denne telefonen. */
   async hentSvar(nokler) {
     if (!nokler.length) return { data: [], error: null };
-    return supabase.rpc('hent_svar', { nokler });
+    return supabase.rpc('hent_mine_svar', { nokler });
   },
 };
 
@@ -304,7 +318,7 @@ function SvarSkjema({ gudstjeneste, onSendt }) {
         editable={status !== 'sender'}
       />
       <Text style={stil.hjelp} accessibilityLiveRegion={igjen < 100 ? 'polite' : 'none'}>
-        {igjen < 200 ? `${igjen} tegn igjen` : 'Svaret sendes uten navn. Presten i menigheten kan lese det, og administrator har teknisk tilgang. Hvis presten svarer, ser du svaret her på denne telefonen.'}
+        {igjen < 200 ? `${igjen} tegn igjen` : 'Svaret sendes uten navn. Presten i menigheten kan lese det, og administrator har teknisk tilgang. Hvis presten svarer, ser du svaret her på denne telefonen. Innspill slettes automatisk, normalt 3 måneder etter gudstjenesten.'}
       </Text>
 
       {visHjelp ? <Hjelpeboks /> : null}
@@ -383,6 +397,19 @@ export default function App() {
                   <Text style={stil.svarDuSkrev}>Du skrev: «{s.innspill_tekst}»</Text>
                   <Text style={stil.sporsmalTekst}>{s.svar_tekst}</Text>
                   <Text style={stil.hjelp}>Svar sendt {lesbarDato(s.svar_tidspunkt)}</Text>
+                  {s.slettes && new Date(s.slettes) - Date.now() < 30 * 86400000 ? (
+                    <Text style={stil.slettesSnart}>
+                      Dette svaret slettes {lesbarDato(s.slettes)}. Ta vare på det hvis du vil beholde det.
+                    </Text>
+                  ) : null}
+                  <Pressable
+                    onPress={() => taVarePaSvar(s)}
+                    accessibilityRole="button"
+                    accessibilityHint="Åpner deling, så du kan lagre svaret for eksempel i Notater"
+                    style={stil.lenkeKnapp}
+                  >
+                    <Text style={stil.lenkeTekst}>Ta vare på svaret</Text>
+                  </Pressable>
                 </View>
               ))}
             </View>
@@ -539,6 +566,7 @@ const stil = StyleSheet.create({
 
   svarKort: { marginBottom: 20, borderColor: farge.gronn, borderWidth: 1.5 },
   svarPost: { paddingTop: 12, marginTop: 4, borderTopWidth: 1, borderTopColor: '#DDE3E0', gap: 6 },
+  slettesSnart: { fontSize: 15, lineHeight: 21, color: farge.feil, fontWeight: '600' },
   svarDuSkrev: { fontSize: 15, lineHeight: 22, color: farge.dempet, fontStyle: 'italic' },
 
   bunn: { marginTop: 24, gap: 8 },

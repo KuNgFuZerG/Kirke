@@ -273,3 +273,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
   min-height: 2.75rem; display: flex; align-items: center;
 }
 .arkiv[open] summary { margin-bottom: 1rem; }
+
+/* ---------- Lagringstid ---------- */
+.slettes { margin: .25rem 0 0; color: var(--dempet); font-size: .9375rem; }
+.slettes.snart { color: var(--feil); font-weight: 700; }
+.bekreft-slett.nedlasting { background: var(--gronn-lys); }

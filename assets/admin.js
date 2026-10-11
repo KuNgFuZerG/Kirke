@@ -160,7 +160,7 @@
 
     async hentInnspill(menighetId) {
       return db.from('innspill')
-        .select(`id, svar_tekst, sendt_tidspunkt, krise, arkivert_at, kan_svare:svar_nokkel_hash,
+        .select(`id, svar_tekst, sendt_tidspunkt, krise, arkivert_at, kan_svare:svar_nokkel_hash, slettes:innspill_slettes,
                  gudstjeneste!inner(id, tittel, dato_tid, menighet_id),
                  prest_svar(id, tekst, sendt_tidspunkt)`)
         .eq('gudstjeneste.menighet_id', menighetId)
@@ -368,6 +368,67 @@
     'Hvis det haster, kan du ringe Kirkens SOS på 22 40 00 40 eller Mental Helse på 116 123. Begge er døgnåpne. ' +
     'Er livet i fare, ring 113.';
 
+  const datoKort = new Intl.DateTimeFormat('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  /** «Slettes automatisk 18. januar 2027», tydelig når det er under 30 dager igjen. */
+  function sletteLinje(i) {
+    if (!i.slettes) return null;
+    const dager = Math.ceil((new Date(i.slettes) - Date.now()) / 86400000);
+    const dato = datoKort.format(new Date(i.slettes));
+    if (dager <= 30) {
+      return el('p', { class: 'slettes snart' },
+        dager <= 0 ? `Slettes i natt (${dato}).` : `Slettes om ${dager} ${dager === 1 ? 'dag' : 'dager'} (${dato}). Last ned nå hvis du trenger det videre.`);
+    }
+    return el('p', { class: 'slettes' }, `Slettes automatisk ${dato}.`);
+  }
+
+  /** Lager en tekstfil med innspillet og prestens svar, og laster den ned. */
+  function lastNedInnspill(i) {
+    const linjer = [
+      'KirkePulsen – innspill',
+      `Menighet: ${tilstand.menighet?.menighet?.navn ?? ''}`,
+      `Gudstjeneste: ${i.gudstjeneste.tittel}, ${lesbarDato(i.gudstjeneste.dato_tid)}`,
+      `Sendt: ${kortDato.format(new Date(i.sendt_tidspunkt))}`,
+      i.krise ? 'Merket: kan trenge oppfølging' : null,
+      '',
+      'Innspill:',
+      i.svar_tekst,
+      ...[...(i.prest_svar || [])]
+        .sort((a, b) => new Date(a.sendt_tidspunkt) - new Date(b.sendt_tidspunkt))
+        .flatMap((s) => ['', `Ditt svar (${kortDato.format(new Date(s.sendt_tidspunkt))}):`, s.tekst]),
+      '',
+      '—',
+      'Lastet ned ' + kortDato.format(new Date()) + '. Denne kopien slettes ikke automatisk.',
+      'Oppbevares bare på jobbenhet, etter arbeidsgiverens rutiner for taushetsbelagte opplysninger.',
+    ].filter((l) => l !== null);
+
+    const blob = new Blob([linjer.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = el('a', { href: url, download: `innspill-${new Date(i.sendt_tidspunkt).toISOString().slice(0, 10)}.txt` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function visNedlastingAdvarsel(rad, innspill) {
+    rad.querySelector('.bekreft-slett')?.remove();
+    const jaKnapp = el('button', { type: 'button', class: 'knapp' }, 'Last ned');
+    const neiKnapp = el('button', { type: 'button', class: 'knapp knapp-rolig' }, 'Avbryt');
+    const boks = el('div', { class: 'bekreft-slett nedlasting', role: 'group', 'aria-label': 'Bekreft nedlasting' },
+      el('p', {}, 'Lagre bare på en jobbenhet, etter arbeidsgiverens rutiner. Den nedlastede kopien slettes ikke automatisk, så du er selv ansvarlig for den.'),
+      el('div', { class: 'knapperad' }, jaKnapp, neiKnapp),
+    );
+    neiKnapp.addEventListener('click', () => { boks.remove(); rad.querySelector('.knapp-lenke')?.focus(); });
+    jaKnapp.addEventListener('click', () => {
+      lastNedInnspill(innspill);
+      boks.remove();
+      visMelding('Innspillet er lastet ned som tekstfil.', 'ok');
+    });
+    rad.append(boks);
+    neiKnapp.focus();
+  }
+
   /** Ett innspill med tekst, eventuelle svar og handlingsknapper. */
   function tegnEttInnspill(i, visGudstjeneste) {
     const tid = kortDato.format(new Date(i.sendt_tidspunkt));
@@ -376,6 +437,7 @@
       el('blockquote', {}, i.svar_tekst),
       el('p', { class: 'innspill-tid' },
         visGudstjeneste ? `Sendt ${tid} til ${i.gudstjeneste.tittel}, ${lesbarDato(i.gudstjeneste.dato_tid)}` : `Sendt ${tid}`),
+      sletteLinje(i),
     );
 
     const svar = [...(i.prest_svar || [])].sort((a, b) => new Date(a.sendt_tidspunkt) - new Date(b.sendt_tidspunkt));
@@ -397,6 +459,8 @@
     knapper.append(el('button', { type: 'button', class: 'knapp-lenke', onclick: (e) => arkiverInnspill(i, !i.arkivert_at, e.currentTarget),
       'aria-label': `${i.arkivert_at ? 'Flytt ut av arkivet' : 'Arkiver'} innspill sendt ${tid}` },
       i.arkivert_at ? 'Flytt ut av arkivet' : 'Arkiver'));
+    knapper.append(el('button', { type: 'button', class: 'knapp-lenke', onclick: () => visNedlastingAdvarsel(rad, i),
+      'aria-label': `Last ned innspill sendt ${tid}` }, 'Last ned'));
     knapper.append(el('button', { type: 'button', class: 'knapp-lenke fare', onclick: () => visFjernBekreftelse(rad, i),
       'aria-label': `Fjern innspill sendt ${tid}` }, 'Fjern'));
     rad.append(knapper);
