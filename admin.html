@@ -53,19 +53,89 @@
     </div>
 </div>
 
+<div id="statusBoks" style="display:none; max-width:800px; margin:20px auto 0; padding:14px 18px; border-radius:8px; background:#FFF5F5; border-left:4px solid #E53E3E; color:#742A2A; font-size:14px;"></div>
+
 <script>
+    // ⚠️ Kopier "Project URL" nøyaktig fra Supabase: Project Settings → Data API.
+    // Prosjekt-ID-en (delen før .supabase.co) er normalt 20 tegn. Denne er 19 og finnes ikke i DNS.
     const SUPABASE_URL = 'https://esjmuexwbhrbgcktiis.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_A3k2xBiT15N4S9NPunqHoA_Mn8Xskxk';
-    
-    // Korrekt oprettelse af klienten uden navnekonflikt
-    const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    window.onload = function() {
+    const LOGG = '[KirkePulsen]';
+
+    function visStatus(tekst) {
+        const boks = document.getElementById('statusBoks');
+        boks.innerHTML = tekst;
+        boks.style.display = 'block';
+    }
+
+    // Hindrer at tekst fra menigheten tolkes som HTML/kode på siden.
+    function escapeHtml(s) {
+        return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // Logger alle detaljer Supabase gir om en feil.
+    function loggFeil(sted, error) {
+        console.group(`${LOGG} FEIL i ${sted}`);
+        console.error('Melding:', error?.message);
+        if (error?.code) console.error('Kode:', error.code, '(42501 = RLS-blokkering, 42P01 = tabell finnes ikke, PGRST200 = mangler kobling mellom tabeller)');
+        if (error?.details) console.error('Detaljer:', error.details);
+        if (error?.hint) console.error('Hint:', error.hint);
+        console.error('Hele feilobjektet:', error);
+        console.groupEnd();
+    }
+
+    // Sjekker at Supabase-adressen finnes og svarer, før vi prøver å bruke databasen.
+    async function sjekkTilkobling() {
+        const vert = new URL(SUPABASE_URL).hostname;
+        const ref = vert.split('.')[0];
+        console.info(`${LOGG} Supabase-adresse: ${SUPABASE_URL} (prosjekt-ID ${ref}, ${ref.length} tegn)`);
+        try {
+            const dns = await fetch(`https://dns.google/resolve?name=${vert}&type=A`).then(r => r.json());
+            if (dns.Status === 3) {
+                const msg = `Adressen <b>${vert}</b> finnes ikke (DNS-oppslag feilet). Prosjekt-URL-en er feil skrevet, eller prosjektet er slettet. Kopier riktig URL fra Supabase → Project Settings → Data API.`;
+                console.error(`${LOGG} ${msg.replace(/<[^>]+>/g, '')}`);
+                visStatus(msg);
+                return false;
+            }
+            console.info(`${LOGG} DNS OK for ${vert}`);
+        } catch (e) {
+            console.warn(`${LOGG} Kunne ikke gjøre DNS-sjekk (ikke kritisk):`, e);
+        }
+        try {
+            const r = await fetch(`${SUPABASE_URL}/rest/v1/`, { headers: { apikey: SUPABASE_ANON_KEY } });
+            console.info(`${LOGG} Supabase svarte med status ${r.status}`);
+            if (r.status === 401) visStatus('Supabase svarer, men nøkkelen blir avvist (401). Sjekk at publishable/anon-nøkkelen hører til samme prosjekt.');
+            if (r.status >= 500) visStatus(`Supabase svarer med serverfeil (${r.status}). Prosjektet kan være pauset – sjekk dashbordet.`);
+            return true;
+        } catch (e) {
+            const msg = 'Fikk ikke kontakt med Supabase (Failed to fetch). Vanlige årsaker: feil URL, pauset prosjekt, annonseblokker/brannmur, eller ingen nett.';
+            console.error(`${LOGG} ${msg}`, e);
+            visStatus(msg);
+            return false;
+        }
+    }
+
+    if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+        console.error(`${LOGG} Supabase-biblioteket ble ikke lastet fra CDN.`);
+    }
+    const _supabase = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    window.onload = async function() {
+        // Neste søndag kl. 11:00 i lokal tid (toISOString ville gitt UTC og vist 09:00/10:00).
         const d = new Date();
         d.setDate(d.getDate() + (7 - d.getDay()) % 7);
         d.setHours(11, 0, 0, 0);
-        document.getElementById('dato').value = d.toISOString().slice(0, 16);
-        hentInnspill();
+        const pad = n => String(n).padStart(2, '0');
+        document.getElementById('dato').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+        if (!_supabase) {
+            visStatus('Supabase-biblioteket ble ikke lastet. Sjekk nettverk eller annonseblokker.');
+            return;
+        }
+        const ok = await sjekkTilkobling();
+        if (ok) hentInnspill();
+        else document.getElementById('innspillListe').innerHTML = '<p style="color:#C53030;">Kunne ikke koble til databasen – se meldingen øverst.</p>';
     };
 
     async function opprettGudstjeneste() {
@@ -87,6 +157,7 @@
                 .maybeSingle();
 
             if (mError) {
+                loggFeil('henting av menighet', mError);
                 alert('Databasefeil ved henting av menighet: ' + mError.message);
                 return;
             }
@@ -108,38 +179,47 @@
             ]);
 
             if (error) {
-                alert('Feil ved lagring i databasen: ' + error.message);
+                loggFeil('lagring av gudstjeneste', error);
+                alert('Feil ved lagring i databasen: ' + error.message + (error.code === '42501' ? '\n\n(Blokkert av sikkerhetsregler/RLS i Supabase.)' : ''));
             } else {
                 alert('Suksess! Gudstjeneste og spørsmål er publisert til menigheten.');
                 location.reload();
             }
         } catch (err) {
+            console.error(`${LOGG} Uventet feil i opprettGudstjeneste:`, err);
             alert('Uventet feil: ' + err);
         }
     }
 
     async function hentInnspill() {
+        const listeDiv = document.getElementById('innspillListe');
         try {
             const { data, error } = await _supabase
                 .from('innspill')
                 .select('*, gudstjeneste(tittel)')
                 .order('sendt_tidspunkt', { ascending: false });
 
-            const listeDiv = document.getElementById('innspillListe');
-            
-            if (error || !data || data.length === 0) {
-                listeDiv.innerHTML = '<p style="color: #718096;">Ingen innspill mottatt ennå.</p>';
+            // Tidligere ble feil skjult som "Ingen innspill". Nå skilles feil fra tom liste.
+            if (error) {
+                loggFeil('henting av innspill', error);
+                listeDiv.innerHTML = `<p style="color:#C53030;">Kunne ikke hente innspill: ${escapeHtml(error.message)}</p>`;
+                return;
+            }
+            console.info(`${LOGG} Hentet ${data.length} innspill`);
+            if (data.length === 0) {
+                listeDiv.innerHTML = '<p style="color: #718096;">Ingen innspill mottatt ennå. (Får du 0 selv om det finnes rader, blokkerer trolig RLS lesing.)</p>';
                 return;
             }
 
             listeDiv.innerHTML = data.map(item => `
                 <div class="innspill-card">
-                    <div class="innspill-tid">📅 ${new Date(item.sendt_tidspunkt).toLocaleString('no-NO')}</div>
-                    <div class="innspill-tekst">"${item.svar_tekst}"</div>
+                    <div class="innspill-tid">📅 ${new Date(item.sendt_tidspunkt).toLocaleString('no-NO')}${item.gudstjeneste?.tittel ? ' · ' + escapeHtml(item.gudstjeneste.tittel) : ''}</div>
+                    <div class="innspill-tekst">"${escapeHtml(item.svar_tekst)}"</div>
                 </div>
             `).join('');
         } catch (err) {
-            console.log('Feil ved henting av innspill:', err);
+            console.error(`${LOGG} Uventet feil ved henting av innspill:`, err);
+            listeDiv.innerHTML = '<p style="color:#C53030;">Nettverksfeil ved henting av innspill – se konsollen (F12).</p>';
         }
     }
 </script>
