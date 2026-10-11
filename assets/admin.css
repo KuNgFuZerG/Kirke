@@ -1,0 +1,245 @@
+/* KirkePulsen – prestens side.
+ * Farger: treenighetstidens liturgiske grønn på kalkhvit bakgrunn.
+ * Alle tekstfarger er kontrollert mot WCAG 2.1 AA (se kommentar ved hver token).
+ * Størrelser er i rem, så alt skalerer når brukeren forstørrer skriften.
+ */
+
+:root {
+  --kalk: #F7F8F6;        /* bakgrunn */
+  --flate: #FFFFFF;       /* skjema- og listeflater */
+  --blekk: #1F2A27;       /* brødtekst – 14.0:1 mot kalk */
+  --dempet: #4F5C57;      /* hjelpetekst – 6.6:1 mot kalk */
+  --gronn: #2F5D4A;       /* hovedfarge, knapper – 7.4:1 mot hvit */
+  --gronn-mork: #234638;  /* hover */
+  --gronn-lys: #E6EEEA;   /* rolige markeringer */
+  --linje: #C9D3CE;       /* skillelinjer (dekor) */
+  --kant: #6B7A74;        /* feltkanter – 4.4:1, over 3:1-kravet for komponenter */
+  --feil: #A3261F;        /* 6.6:1 mot hvit */
+  --feil-lys: #FBECEA;
+  --ok: #24563F;
+  --ok-lys: #E5F1EA;
+  --fokus: #1B4FA0;       /* fokusring – skiller seg fra grønt, 7.6:1 */
+
+  --skrift: 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --skrift-stemme: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+
+  --r-liten: 6px;
+  --r-stor: 14px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { font-size: 100%; -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--kalk);
+  color: var(--blekk);
+  font-family: var(--skrift);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+
+/* ---------- Fokus og bevegelse ---------- */
+
+:focus-visible {
+  outline: 3px solid var(--fokus);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+.hopp-til-innhold {
+  position: absolute; left: 1rem; top: -4rem;
+  background: var(--flate); color: var(--blekk);
+  padding: .75rem 1rem; border-radius: var(--r-liten); z-index: 10;
+}
+.hopp-til-innhold:focus { top: 1rem; }
+
+.skjult-visuelt {
+  position: absolute !important; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; margin: -1px; padding: 0; border: 0;
+}
+
+[hidden] { display: none !important; }
+
+/* ---------- Toppfelt ---------- */
+
+.topp {
+  border-bottom: 1px solid var(--linje);
+  background: var(--flate);
+}
+.topp-indre {
+  max-width: 72rem; margin: 0 auto;
+  padding: 1.25rem 1.25rem;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.merke { margin: 0; font-size: 1.125rem; font-weight: 700; letter-spacing: .01em; }
+.merke-menighet { display: block; font-weight: 400; color: var(--dempet); font-size: 1rem; }
+
+.topp-handlinger { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+
+/* ---------- Hovedoppsett ---------- */
+
+main {
+  max-width: 72rem; margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.innlogging { max-width: 26rem; margin: 3rem auto 0; }
+.innlogging h1 { font-size: 1.75rem; line-height: 1.2; margin: 0 0 .5rem; }
+
+.dashbord { display: grid; gap: 3rem; }
+@media (min-width: 62rem) {
+  .dashbord { grid-template-columns: minmax(0, 28rem) minmax(0, 1fr); gap: 4rem; align-items: start; }
+}
+
+h2 { font-size: 1.5rem; line-height: 1.25; margin: 0 0 .5rem; }
+h3 { font-size: 1.125rem; line-height: 1.3; margin: 0; }
+.ingress { margin: 0 0 1.5rem; color: var(--dempet); max-width: 38rem; }
+
+.del + .del { margin-top: 3rem; }
+
+/* ---------- Skjema ---------- */
+
+.skjema { display: grid; gap: 1.25rem; }
+
+.felt { display: grid; gap: .375rem; }
+.felt label, .felt-tittel { font-weight: 700; }
+.hjelp { font-size: .9375rem; color: var(--dempet); margin: 0; }
+
+input, textarea, select {
+  font: inherit; color: var(--blekk);
+  width: 100%;
+  padding: .75rem .875rem;
+  background: var(--flate);
+  border: 1.5px solid var(--kant);
+  border-radius: var(--r-liten);
+  min-height: 2.75rem;
+}
+textarea { min-height: 7rem; resize: vertical; line-height: 1.5; }
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offset: 1px; }
+
+[aria-invalid="true"] { border-color: var(--feil); }
+.felt-feil { color: var(--feil); font-size: .9375rem; margin: 0; }
+
+.frist-forklaring {
+  margin: 0; padding: .75rem 1rem;
+  background: var(--gronn-lys); border-radius: var(--r-liten);
+  font-size: .9375rem;
+}
+
+.knapperad { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+
+/* ---------- Knapper ---------- */
+
+.knapp {
+  font: inherit; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  min-height: 2.75rem; padding: .625rem 1.25rem;
+  border-radius: var(--r-liten);
+  border: 2px solid var(--gronn);
+  background: var(--gronn); color: #FFFFFF;
+  cursor: pointer;
+}
+.knapp:hover { background: var(--gronn-mork); border-color: var(--gronn-mork); }
+.knapp[disabled] { cursor: progress; opacity: .75; }
+
+.knapp-rolig { background: transparent; color: var(--gronn); }
+.knapp-rolig:hover { background: var(--gronn-lys); color: var(--gronn-mork); }
+
+.knapp-fare { background: var(--feil); border-color: var(--feil); }
+.knapp-fare:hover { background: #7F1D18; border-color: #7F1D18; }
+
+.knapp-lenke {
+  font: inherit; background: none; border: 0; padding: .25rem 0;
+  color: var(--gronn); text-decoration: underline; text-underline-offset: 3px;
+  cursor: pointer; min-height: 2.75rem;
+}
+.knapp-lenke:hover { color: var(--gronn-mork); }
+.knapp-lenke.fare { color: var(--feil); }
+
+/* Spinner i knapper og lister */
+.spinner {
+  width: 1rem; height: 1rem; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent;
+  animation: snurr .8s linear infinite;
+}
+@keyframes snurr { to { transform: rotate(360deg); } }
+
+/* ---------- Meldinger ---------- */
+
+.melding {
+  padding: .875rem 1rem; border-radius: var(--r-liten);
+  border-left: 4px solid; margin: 0 0 1.5rem;
+}
+.melding-feil { background: var(--feil-lys); border-color: var(--feil); color: #6E1A15; }
+.melding-ok { background: var(--ok-lys); border-color: var(--ok); color: var(--ok); }
+
+/* ---------- Gudstjenesteliste ---------- */
+
+.gudstjenester { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--linje); }
+.gudstjeneste {
+  padding: 1.125rem 0;
+  border-bottom: 1px solid var(--linje);
+  display: grid; gap: .25rem;
+}
+.gudstjeneste-dato { color: var(--dempet); font-size: .9375rem; margin: 0; }
+.gudstjeneste-tittel { font-family: var(--skrift-stemme); font-size: 1.1875rem; font-weight: 600; }
+.gudstjeneste-tema { margin: 0; }
+.gudstjeneste-mangler { margin: 0; color: var(--feil); font-size: .9375rem; }
+.gudstjeneste .knapperad { gap: 1.25rem; margin-top: .25rem; }
+
+.bekreft-slett {
+  margin-top: .5rem; padding: .875rem 1rem;
+  background: var(--feil-lys); border-radius: var(--r-liten);
+}
+.bekreft-slett p { margin: 0 0 .75rem; }
+
+.tomt { color: var(--dempet); margin: 0; padding: 1rem 0; }
+
+/* Plassholdere mens data lastes */
+.skjelett {
+  display: block; height: 1rem; border-radius: 4px; margin: .5rem 0;
+  background: linear-gradient(90deg, #E8ECEA 0%, #F2F4F3 50%, #E8ECEA 100%);
+  background-size: 200% 100%;
+  animation: skimmer 1.4s ease-in-out infinite;
+}
+.skjelett.kort { width: 40%; }
+.skjelett.lang { width: 85%; height: 1.25rem; }
+@keyframes skimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+/* ---------- Innspill: menighetens stemme ---------- */
+
+.innspill-gruppe + .innspill-gruppe { margin-top: 2.5rem; }
+.innspill-gruppe h3 { font-family: var(--skrift-stemme); font-size: 1.25rem; font-weight: 600; }
+.innspill-gruppe .gudstjeneste-dato { margin-bottom: 1rem; }
+
+.innspill-liste { list-style: none; margin: 0; padding: 0; }
+.innspill {
+  margin: 0;
+  padding: 1.5rem 0 1.5rem 1.5rem;
+  border-left: 3px solid var(--gronn);
+}
+.innspill + .innspill { margin-top: 1rem; }
+.innspill blockquote {
+  margin: 0;
+  font-family: var(--skrift-stemme);
+  font-size: 1.3125rem;
+  line-height: 1.65;
+  max-width: 36rem;
+  white-space: pre-line;
+}
+.innspill-tid { margin: .75rem 0 0; color: var(--dempet); font-size: .9375rem; }
+
+/* ---------- Små skjermer ---------- */
+
+@media (max-width: 30rem) {
+  main { padding-top: 1.5rem; }
+  .innspill { padding-left: 1rem; }
+  .innspill blockquote { font-size: 1.1875rem; }
+  .knapperad .knapp { flex: 1 1 auto; }
+}
