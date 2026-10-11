@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, SafeAr
 import { createClient } from '@supabase/supabase-js';
 
 // 1. Kobling til Supabase (Dine ekte verdier)
-const SUPABASE_URL = 'https://esjmuexwbhrbgcktiis.supabase.co';
+const SUPABASE_URL = 'https://esjmuexwbhrbgcktiis.supabase.com';
 const SUPABASE_ANON_KEY = 'sb_publishable_A3k2xBiT15N4S9NPunqHoA_Mn8Xskxk';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
