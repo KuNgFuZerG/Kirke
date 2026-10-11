@@ -11,63 +11,97 @@
         .container { max-width: 800px; margin: 0 auto; background: #FFFFFF; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         h1 { color: #1A202C; font-size: 24px; margin-bottom: 5px; }
         .subtitle { color: #718096; margin-bottom: 25px; font-size: 14px; }
+        .topplinje { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
         .section { margin-bottom: 35px; border-bottom: 1px solid #E2E8F0; padding-bottom: 25px; }
         label { display: block; font-weight: bold; margin-bottom: 6px; color: #4A5568; font-size: 14px; }
         input, textarea { width: 100%; padding: 10px; border: 1px solid #CBD5E0; border-radius: 6px; font-size: 15px; margin-bottom: 15px; box-sizing: border-box; }
         textarea { height: 90px; resize: vertical; }
         button { background-color: #3182CE; color: white; border: none; padding: 12px 20px; font-size: 16px; font-weight: bold; border-radius: 6px; cursor: pointer; }
         button:hover { background-color: #2B6CB0; }
+        button:disabled { background-color: #A0AEC0; cursor: wait; }
+        button.sekundaer { background: #EDF2F7; color: #2D3748; font-size: 14px; padding: 8px 14px; }
+        button.sekundaer:hover { background: #E2E8F0; }
         .innspill-card { background: #EBF8FF; border-left: 4px solid #3182CE; padding: 12px 16px; border-radius: 4px; margin-bottom: 10px; }
         .innspill-tid { font-size: 12px; color: #718096; margin-bottom: 4px; }
         .innspill-tekst { font-size: 15px; color: #2D3748; }
+        .melding { padding: 14px 18px; border-radius: 8px; font-size: 14px; margin-bottom: 20px; }
+        .melding.feil { background: #FFF5F5; border-left: 4px solid #E53E3E; color: #742A2A; }
+        .melding.ok { background: #F0FFF4; border-left: 4px solid #38A169; color: #22543D; }
+        .skjult { display: none; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>KirkePulsen – Prestens Dashbord</h1>
-    <div class="subtitle">Høvåg kirke, Lillesand</div>
-
-    <!-- Seksjon for å opprette ny gudstjeneste -->
-    <div class="section">
-        <h2>📅 Opprett ny gudstjeneste / spørsmål</h2>
-        <label for="tittel">Gudstjeneste tittel:</label>
-        <input type="text" id="tittel" placeholder="F.eks. Familiegudstjeneste" value="Søndagsgudstjeneste i Høvåg">
-
-        <label for="beskrivelse">Beskrivelse / Tema:</label>
-        <input type="text" id="beskrivelse" placeholder="F.eks. Tema om tilgivelse og fellesskap" value="Gudstjeneste i Høvåg kirke">
-
-        <label for="sporsmal">Prestens spørsmål til menigheten:</label>
-        <textarea id="sporsmal" placeholder="Hva ønsker du å fokusere på i prekenen?">Hva betyr tilgivelse for deg i hverdagen akkurat nå?</textarea>
-
-        <label for="dato">Dato og tid:</label>
-        <input type="datetime-local" id="dato">
-
-        <button onclick="opprettGudstjeneste()">Publiser til menigheten</button>
+    <div class="topplinje">
+        <div>
+            <h1>KirkePulsen – Prestens Dashbord</h1>
+            <div class="subtitle" id="menighetNavn">Logg inn for å fortsette</div>
+        </div>
+        <button id="loggUtKnapp" class="sekundaer skjult" onclick="loggUt()">Logg ut</button>
     </div>
 
-    <!-- Seksjon for å lese innspill -->
-    <div class="section">
-        <h2>📥 Innkommende innspill fra menigheten</h2>
-        <div id="innspillListe"><p style="color: #718096;">Laster innspill...</p></div>
+    <div id="melding" class="melding skjult"></div>
+
+    <!-- Innlogging (vises når presten ikke er logget inn) -->
+    <div id="innloggingSeksjon" class="section skjult">
+        <h2>🔒 Logg inn</h2>
+        <form onsubmit="loggInn(event)">
+            <label for="epost">E-post:</label>
+            <input type="email" id="epost" autocomplete="username" required>
+            <label for="passord">Passord:</label>
+            <input type="password" id="passord" autocomplete="current-password" required>
+            <button type="submit" id="loggInnKnapp">Logg inn</button>
+        </form>
+    </div>
+
+    <!-- Dashbordet (vises bare for innlogget prest) -->
+    <div id="dashbordSeksjon" class="skjult">
+        <div class="section">
+            <h2>📅 Opprett ny gudstjeneste / spørsmål</h2>
+            <label for="tittel">Gudstjeneste tittel:</label>
+            <input type="text" id="tittel" placeholder="F.eks. Familiegudstjeneste" value="Søndagsgudstjeneste">
+
+            <label for="beskrivelse">Beskrivelse / Tema:</label>
+            <input type="text" id="beskrivelse" placeholder="F.eks. Tema om tilgivelse og fellesskap">
+
+            <label for="sporsmal">Prestens spørsmål til menigheten:</label>
+            <textarea id="sporsmal" placeholder="Hva ønsker du å fokusere på i prekenen?"></textarea>
+
+            <label for="dato">Dato og tid:</label>
+            <input type="datetime-local" id="dato">
+
+            <button id="publiserKnapp" onclick="opprettGudstjeneste()">Publiser til menigheten</button>
+        </div>
+
+        <div class="section">
+            <h2>📥 Innkommende innspill fra menigheten</h2>
+            <div id="innspillListe"><p style="color: #718096;">Laster innspill...</p></div>
+        </div>
     </div>
 </div>
 
-<div id="statusBoks" style="display:none; max-width:800px; margin:20px auto 0; padding:14px 18px; border-radius:8px; background:#FFF5F5; border-left:4px solid #E53E3E; color:#742A2A; font-size:14px;"></div>
-
 <script>
-    // ⚠️ Kopier "Project URL" nøyaktig fra Supabase: Project Settings → Data API.
-    // Prosjekt-ID-en (delen før .supabase.co) er 20 tegn. Rettet 11.10.2026 – var feilskrevet.
+    // Kopier "Project URL" nøyaktig fra Supabase: Project Settings → Data API.
     const SUPABASE_URL = 'https://esjmuewxbhrbcgktxiis.supabase.co';
+    // Publishable-nøkkelen er laget for å ligge i nettsider. Sikkerheten ligger i
+    // tilgangsreglene i databasen (se supabase/migrations/), ikke i at nøkkelen er hemmelig.
     const SUPABASE_ANON_KEY = 'sb_publishable_A3k2xBiT15N4S9NPunqHoA_Mn8Xskxk';
 
     const LOGG = '[KirkePulsen]';
+    let prest = null; // { user_id, menighet_id, navn, menighet: { navn, kommune } }
 
-    function visStatus(tekst) {
-        const boks = document.getElementById('statusBoks');
+    // ---------- Hjelpefunksjoner ----------
+
+    const $ = id => document.getElementById(id);
+    const vis = (id, synlig) => $(id).classList.toggle('skjult', !synlig);
+
+    function visMelding(tekst, type = 'feil') {
+        const boks = $('melding');
+        boks.className = `melding ${type}`;
         boks.innerHTML = tekst;
-        boks.style.display = 'block';
     }
+    function skjulMelding() { $('melding').className = 'melding skjult'; }
 
     // Hindrer at tekst fra menigheten tolkes som HTML/kode på siden.
     function escapeHtml(s) {
@@ -78,43 +112,49 @@
     function loggFeil(sted, error) {
         console.group(`${LOGG} FEIL i ${sted}`);
         console.error('Melding:', error?.message);
-        if (error?.code) console.error('Kode:', error.code, '(42501 = RLS-blokkering, 42P01 = tabell finnes ikke, PGRST200 = mangler kobling mellom tabeller)');
+        if (error?.code) console.error('Kode:', error.code, '(42501 = nektet av tilgangsregler, 42P01 = tabell finnes ikke, PGRST200 = mangler kobling mellom tabeller)');
         if (error?.details) console.error('Detaljer:', error.details);
         if (error?.hint) console.error('Hint:', error.hint);
         console.error('Hele feilobjektet:', error);
         console.groupEnd();
     }
 
-    // Sjekker at Supabase-adressen finnes og svarer, før vi prøver å bruke databasen.
+    function standardDato() {
+        // Neste søndag kl. 11:00 i lokal tid.
+        const d = new Date();
+        d.setDate(d.getDate() + (7 - d.getDay()) % 7);
+        d.setHours(11, 0, 0, 0);
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    // Sjekker at Supabase-adressen finnes og svarer.
     async function sjekkTilkobling() {
         const vert = new URL(SUPABASE_URL).hostname;
-        const ref = vert.split('.')[0];
-        console.info(`${LOGG} Supabase-adresse: ${SUPABASE_URL} (prosjekt-ID ${ref}, ${ref.length} tegn)`);
         try {
             const dns = await fetch(`https://dns.google/resolve?name=${vert}&type=A`).then(r => r.json());
             if (dns.Status === 3) {
-                const msg = `Adressen <b>${vert}</b> finnes ikke (DNS-oppslag feilet). Prosjekt-URL-en er feil skrevet, eller prosjektet er slettet. Kopier riktig URL fra Supabase → Project Settings → Data API.`;
-                console.error(`${LOGG} ${msg.replace(/<[^>]+>/g, '')}`);
-                visStatus(msg);
+                console.error(`${LOGG} ${vert} finnes ikke (DNS NXDOMAIN).`);
+                visMelding(`Adressen <b>${vert}</b> finnes ikke. Sjekk SUPABASE_URL mot Supabase → Project Settings → Data API.`);
                 return false;
             }
-            console.info(`${LOGG} DNS OK for ${vert}`);
         } catch (e) {
-            console.warn(`${LOGG} Kunne ikke gjøre DNS-sjekk (ikke kritisk):`, e);
+            console.warn(`${LOGG} DNS-sjekk feilet (ikke kritisk):`, e);
         }
         try {
-            const r = await fetch(`${SUPABASE_URL}/rest/v1/`, { headers: { apikey: SUPABASE_ANON_KEY } });
+            const r = await fetch(`${SUPABASE_URL}/auth/v1/health`, { headers: { apikey: SUPABASE_ANON_KEY } });
             console.info(`${LOGG} Supabase svarte med status ${r.status}`);
-            if (r.status === 401) visStatus('Supabase svarer, men nøkkelen blir avvist (401). Sjekk at publishable/anon-nøkkelen hører til samme prosjekt.');
-            if (r.status >= 500) visStatus(`Supabase svarer med serverfeil (${r.status}). Prosjektet kan være pauset – sjekk dashbordet.`);
+            if (r.status === 401) { visMelding('Supabase avviser nøkkelen (401). Sjekk at publishable-nøkkelen hører til samme prosjekt.'); return false; }
+            if (r.status >= 500) { visMelding(`Supabase svarer med serverfeil (${r.status}). Prosjektet kan være pauset.`); return false; }
             return true;
         } catch (e) {
-            const msg = 'Fikk ikke kontakt med Supabase (Failed to fetch). Vanlige årsaker: feil URL, pauset prosjekt, annonseblokker/brannmur, eller ingen nett.';
-            console.error(`${LOGG} ${msg}`, e);
-            visStatus(msg);
+            console.error(`${LOGG} Fikk ikke kontakt med Supabase:`, e);
+            visMelding('Fikk ikke kontakt med Supabase. Sjekk nettverket, eller om en annonseblokker stopper forespørselen.');
             return false;
         }
     }
+
+    // ---------- Oppstart og innlogging ----------
 
     if (!window.supabase || typeof window.supabase.createClient !== 'function') {
         console.error(`${LOGG} Supabase-biblioteket ble ikke lastet fra CDN.`);
@@ -122,84 +162,147 @@
     const _supabase = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     window.onload = async function() {
-        // Neste søndag kl. 11:00 i lokal tid (toISOString ville gitt UTC og vist 09:00/10:00).
-        const d = new Date();
-        d.setDate(d.getDate() + (7 - d.getDay()) % 7);
-        d.setHours(11, 0, 0, 0);
-        const pad = n => String(n).padStart(2, '0');
-        document.getElementById('dato').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-
+        $('dato').value = standardDato();
         if (!_supabase) {
-            visStatus('Supabase-biblioteket ble ikke lastet. Sjekk nettverk eller annonseblokker.');
+            visMelding('Supabase-biblioteket ble ikke lastet. Sjekk nettverk eller annonseblokker.');
             return;
         }
-        const ok = await sjekkTilkobling();
-        if (ok) hentInnspill();
-        else document.getElementById('innspillListe').innerHTML = '<p style="color:#C53030;">Kunne ikke koble til databasen – se meldingen øverst.</p>';
+        if (!(await sjekkTilkobling())) return;
+
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (session) await startDashbord(session.user);
+        else visInnlogging();
     };
 
+    function visInnlogging() {
+        prest = null;
+        vis('innloggingSeksjon', true);
+        vis('dashbordSeksjon', false);
+        vis('loggUtKnapp', false);
+        $('menighetNavn').textContent = 'Logg inn for å fortsette';
+    }
+
+    async function loggInn(e) {
+        e.preventDefault();
+        skjulMelding();
+        const knapp = $('loggInnKnapp');
+        knapp.disabled = true;
+        try {
+            const { data, error } = await _supabase.auth.signInWithPassword({
+                email: $('epost').value.trim(),
+                password: $('passord').value
+            });
+            if (error) {
+                loggFeil('innlogging', error);
+                visMelding(error.message === 'Invalid login credentials'
+                    ? 'Feil e-post eller passord.'
+                    : 'Innlogging feilet: ' + escapeHtml(error.message));
+                return;
+            }
+            $('passord').value = '';
+            await startDashbord(data.user);
+        } finally {
+            knapp.disabled = false;
+        }
+    }
+
+    async function loggUt() {
+        await _supabase.auth.signOut();
+        skjulMelding();
+        visInnlogging();
+    }
+
+    // Finner hvilken menighet den innloggede brukeren er prest i.
+    // Databasen viser bare brukerens egen rad i tabellen `prest`.
+    async function startDashbord(bruker) {
+        const { data, error } = await _supabase
+            .from('prest')
+            .select('user_id, menighet_id, navn, menighet(navn, kommune)')
+            .eq('user_id', bruker.id)
+            .maybeSingle();
+
+        if (error) {
+            loggFeil('henting av prest', error);
+            visMelding('Kunne ikke hente prestetilgang: ' + escapeHtml(error.message));
+            return;
+        }
+        if (!data) {
+            console.warn(`${LOGG} Bruker ${bruker.email} (${bruker.id}) står ikke i tabellen prest.`);
+            visMelding(`Brukeren <b>${escapeHtml(bruker.email)}</b> er logget inn, men er ikke registrert som prest i noen menighet. Kontakt administrator.`);
+            vis('innloggingSeksjon', false);
+            vis('dashbordSeksjon', false);
+            vis('loggUtKnapp', true);
+            return;
+        }
+
+        prest = data;
+        console.info(`${LOGG} Innlogget som prest i ${data.menighet?.navn} (${data.menighet_id})`);
+        $('menighetNavn').textContent = [data.menighet?.navn, data.menighet?.kommune].filter(Boolean).join(', ');
+        vis('innloggingSeksjon', false);
+        vis('dashbordSeksjon', true);
+        vis('loggUtKnapp', true);
+        hentInnspill();
+    }
+
+    // Hvis innloggingen utløper eller brukeren logger ut i en annen fane.
+    _supabase?.auth.onAuthStateChange((hendelse) => {
+        if (hendelse === 'SIGNED_OUT') visInnlogging();
+    });
+
+    // ---------- Dashbord ----------
+
     async function opprettGudstjeneste() {
-        const tittel = document.getElementById('tittel').value;
-        const beskrivelse = document.getElementById('beskrivelse').value;
-        const sporsmal = document.getElementById('sporsmal').value;
-        const dato = document.getElementById('dato').value;
+        if (!prest) return visInnlogging();
+
+        const tittel = $('tittel').value.trim();
+        const beskrivelse = $('beskrivelse').value.trim();
+        const sporsmal = $('sporsmal').value.trim();
+        const dato = $('dato').value;
 
         if (!tittel || !dato) {
             alert('Vennligst fyll ut tittel og dato.');
             return;
         }
 
+        const knapp = $('publiserKnapp');
+        knapp.disabled = true;
         try {
-            const { data: menighetData, error: mError } = await _supabase
-                .from('menighet')
-                .select('id')
-                .limit(1)
-                .maybeSingle();
-
-            if (mError) {
-                loggFeil('henting av menighet', mError);
-                alert('Databasefeil ved henting av menighet: ' + mError.message);
-                return;
-            }
-
-            if (!menighetData) {
-                alert('Ingen menighet ble funnet i databasen.');
-                return;
-            }
-
-            const { error } = await _supabase.from('gudstjeneste').insert([
-                {
-                    menighet_id: menighetData.id,
-                    tittel: tittel,
-                    beskrivelse: beskrivelse || 'Ingen beskrivelse',
-                    dato_tid: new Date(dato).toISOString(),
-                    svarfrist: new Date(new Date(dato).getTime() - 24 * 60 * 60 * 1000).toISOString(),
-                    sporsmal_fra_prest: sporsmal
-                }
-            ]);
+            const tidspunkt = new Date(dato);
+            const { error } = await _supabase.from('gudstjeneste').insert([{
+                menighet_id: prest.menighet_id,
+                tittel,
+                beskrivelse: beskrivelse || null,
+                dato_tid: tidspunkt.toISOString(),
+                svarfrist: new Date(tidspunkt.getTime() - 24 * 60 * 60 * 1000).toISOString(),
+                sporsmal_fra_prest: sporsmal || null
+            }]);
 
             if (error) {
                 loggFeil('lagring av gudstjeneste', error);
-                alert('Feil ved lagring i databasen: ' + error.message + (error.code === '42501' ? '\n\n(Blokkert av sikkerhetsregler/RLS i Supabase.)' : ''));
-            } else {
-                alert('Suksess! Gudstjeneste og spørsmål er publisert til menigheten.');
-                location.reload();
+                visMelding('Feil ved lagring: ' + escapeHtml(error.message) +
+                    (error.code === '42501' ? ' (Nektet av tilgangsreglene. Er du registrert som prest i denne menigheten?)' : ''));
+                return;
             }
+            visMelding('✅ Gudstjeneste og spørsmål er publisert til menigheten.', 'ok');
+            $('beskrivelse').value = '';
+            $('sporsmal').value = '';
         } catch (err) {
             console.error(`${LOGG} Uventet feil i opprettGudstjeneste:`, err);
-            alert('Uventet feil: ' + err);
+            visMelding('Uventet feil: ' + escapeHtml(err));
+        } finally {
+            knapp.disabled = false;
         }
     }
 
     async function hentInnspill() {
-        const listeDiv = document.getElementById('innspillListe');
+        const listeDiv = $('innspillListe');
         try {
+            // Tilgangsreglene sørger for at presten bare får innspill fra egen menighet.
             const { data, error } = await _supabase
                 .from('innspill')
-                .select('*, gudstjeneste(tittel)')
+                .select('id, svar_tekst, sendt_tidspunkt, gudstjeneste(tittel, dato_tid)')
                 .order('sendt_tidspunkt', { ascending: false });
 
-            // Tidligere ble feil skjult som "Ingen innspill". Nå skilles feil fra tom liste.
             if (error) {
                 loggFeil('henting av innspill', error);
                 listeDiv.innerHTML = `<p style="color:#C53030;">Kunne ikke hente innspill: ${escapeHtml(error.message)}</p>`;
@@ -207,7 +310,7 @@
             }
             console.info(`${LOGG} Hentet ${data.length} innspill`);
             if (data.length === 0) {
-                listeDiv.innerHTML = '<p style="color: #718096;">Ingen innspill mottatt ennå. (Får du 0 selv om det finnes rader, blokkerer trolig RLS lesing.)</p>';
+                listeDiv.innerHTML = '<p style="color: #718096;">Ingen innspill mottatt ennå.</p>';
                 return;
             }
 
