@@ -34,6 +34,9 @@
         <label for="tittel">Gudstjeneste tittel:</label>
         <input type="text" id="tittel" placeholder="F.eks. Familiegudstjeneste" value="Søndagsgudstjeneste i Høvåg">
 
+        <label for="beskrivelse">Beskrivelse / Tema:</label>
+        <input type="text" id="beskrivelse" placeholder="F.eks. Tema om tilgivelse og fellesskap" value="Gudstjeneste i Høvåg kirke">
+
         <label for="sporsmal">Prestens spørsmål til menigheten:</label>
         <textarea id="sporsmal" placeholder="Hva ønsker du å fokusere på i prekenen?">Hva betyr tilgivelse for deg i hverdagen akkurat nå?</textarea>
 
@@ -51,10 +54,10 @@
 </div>
 
 <script>
-    // Kobling til Supabase (samme som i appen)
+    // Kobling til Supabase
     const SUPABASE_URL = 'https://esjmuexwbhrbgcktiis.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_A3k2xBiT15N4S9NPunqHoA_Mn8Xskxk';
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     // Sett standarddato til neste søndag kl 11:00
     window.onload = function() {
@@ -67,6 +70,7 @@
 
     async function opprettGudstjeneste() {
         const tittel = document.getElementById('tittel').value;
+        const beskrivelse = document.getElementById('beskrivelse').value;
         const sporsmal = document.getElementById('sporsmal').value;
         const dato = document.getElementById('dato').value;
 
@@ -75,50 +79,59 @@
             return;
         }
 
-        // Hent menighet-ID for Høvåg kirke
-        const { data: menighetData } = await supabase.from('menighet').select('id').limit(1).single();
-        if (!menighetData) {
-            alert('Fant ikke menighet i databasen.');
-            return;
-        }
-
-        const { error } = await supabase.from('gudstjeneste').insert([
-            {
-                menighet_id: menighetData.id,
-                tittel: tittel,
-                dato_tid: new Date(dato).toISOString(),
-                svarfrist: new Date(new Date(dato).getTime() - 24 * 60 * 60 * 1000).toISOString(), // 24 timer før
-                sporsmal_fra_prest: sporsmal
+        try {
+            // Hent menighet-ID for Høvåg kirke
+            const { data: menighetData, error: mError } = await supabaseClient.from('menighet').select('id').limit(1).single();
+            if (mError || !menighetData) {
+                alert('Fant ikke menighet i databasen: ' + (mError ? mError.message : 'Tom retur'));
+                return;
             }
-        ]);
 
-        if (error) {
-            alert('Kunne ikke opprette gudstjeneste: ' + error.message);
-        } else {
-            alert('Gudstjeneste og spørsmål er publisert til menigheten!');
-            location.reload();
+            const { error } = await supabaseClient.from('gudstjeneste').insert([
+                {
+                    menighet_id: menighetData.id,
+                    tittel: tittel,
+                    beskrivelse: beskrivelse || 'Ingen beskrivelse',
+                    dato_tid: new Date(dato).toISOString(),
+                    svarfrist: new Date(new Date(dato).getTime() - 24 * 60 * 60 * 1000).toISOString(),
+                    sporsmal_fra_prest: sporsmal
+                }
+            ]);
+
+            if (error) {
+                alert('Feil ved lagring i databasen: ' + error.message);
+            } else {
+                alert('Suksess! Gudstjeneste og spørsmål er publisert til menigheten.');
+                location.reload();
+            }
+        } catch (err) {
+            alert('Det oppstod en uventet feil: ' + err.message);
         }
     }
 
     async function hentInnspill() {
-        const { data, error } = await supabase
-            .from('innspill')
-            .select('*, gudstjeneste(tittel)')
-            .order('sendt_tidspunkt', { ascending: false });
+        try {
+            const { data, error } = await supabaseClient
+                .from('innspill')
+                .select('*, gudstjeneste(tittel)')
+                .order('sendt_tidspunkt', { ascending: false });
 
-        const listeDiv = document.getElementById('innspillListe');
-        
-        if (error || !data || data.length === 0) {
-            listeDiv.innerHTML = '<p style="color: #718096;">Ingen innspill mottatt ennå.</p>';
-            return;
+            const listeDiv = document.getElementById('innspillListe');
+            
+            if (error || !data || data.length === 0) {
+                listeDiv.innerHTML = '<p style="color: #718096;">Ingen innspill mottatt ennå.</p>';
+                return;
+            }
+
+            listeDiv.innerHTML = data.map(item => `
+                <div class="innspill-card">
+                    <div class="innspill-tid">📅 ${new Date(item.sendt_tidspunkt).toLocaleString('no-NO')}</div>
+                    <div class="innspill-tekst">"${item.svar_tekst}"</div>
+                </div>
+            `).join('');
+        } catch (err) {
+            console.log('Feil ved henting av innspill:', err);
         }
-
-        listeDiv.innerHTML = data.map(item => `
-            <div class="innspill-card">
-                <div class="innspill-tid">📅 ${new Date(item.sendt_tidspunkt).toLocaleString('no-NO')}</div>
-                <div class="innspill-tekst">"${item.svar_tekst}"</div>
-            </div>
-        `).join('');
     }
 </script>
 
