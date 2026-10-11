@@ -186,9 +186,12 @@ function SvarSkjema({ gudstjeneste }) {
       les('Innspillet ditt er sendt til presten.');
     } catch (err) {
       console.log('[KirkePulsen] Kunne ikke sende innspill:', err?.code, err?.message);
-      const melding = /fetch|network/i.test(err?.message ?? '')
-        ? 'Fikk ikke kontakt. Sjekk nettforbindelsen og prøv igjen. Teksten din er tatt vare på.'
-        : 'Innspillet ble ikke sendt. Prøv igjen om litt. Teksten din er tatt vare på.';
+      // 42501: databasen avviste innspillet, normalt fordi svarfristen gikk ut mens appen var åpen.
+      const melding = err?.code === '42501'
+        ? 'Svarfristen er passert, så innspillet ble ikke sendt. Du kan svare på neste gudstjeneste når presten har publisert den.'
+        : /fetch|network/i.test(err?.message ?? '')
+          ? 'Fikk ikke kontakt. Sjekk nettforbindelsen og prøv igjen. Teksten din er tatt vare på.'
+          : 'Innspillet ble ikke sendt. Prøv igjen om litt. Teksten din er tatt vare på.';
       setStatus('feil');
       setFeilmelding(melding);
       les(melding);
