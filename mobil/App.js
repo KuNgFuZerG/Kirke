@@ -66,6 +66,14 @@ const KRISEORD = [
   'orker ikke å leve', 'orker ikke leve', 'vil dø', 'ønsker å dø', 'lyst til å dø',
   'bedre om jeg var død', 'bedre uten meg', 'skade meg selv', 'skader meg selv', 'selvskad',
   'kutte meg', 'kutter meg', 'overdose', 'ingen grunn til å leve', 'orker ikke mer',
+  // Indirekte uttrykk (lagt til etter test 11.10.2026)
+  'sovne inn', 'sovner inn', 'løpt løpet ut', 'ikke våkne', 'slippe å våkne',
+  'slutt på alt', 'slippe å leve', 'bli borte for alltid', 'forsvinne for alltid',
+  'orker ikke lenger', 'orker ikke livet', 'gi opp livet', 'gir opp livet',
+  'ikke verdt å leve', 'ingen vits å leve', 'ingen vits i å leve',
+  'ingen mening med livet', 'livet har ingen mening', 'lei av å leve', 'lei av livet',
+  'trett av livet', 'trøtt av livet', 'ikke være her lenger', 'vil ikke være her',
+  'jeg var død', 'jeg hadde vært død', 'henge meg', 'skjære meg', 'ta mitt liv',
 ];
 
 // Døgnåpne hjelpetelefoner.
