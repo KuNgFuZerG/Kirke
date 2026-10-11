@@ -1,7 +1,7 @@
 /**
  * KirkePulsen – menighetsappen.
  *
- * Viser neste gudstjeneste i én menighet og lar hvem som helst sende et anonymt
+ * Viser neste gudstjeneste i én menighet og lar hvem som helst sende et innspill uten navn
  * innspill til presten. Databasen sørger for at innspill bare kan leses av prester
  * i menigheten (se supabase/migrations/), så appen trenger ingen innlogging.
  *
@@ -100,7 +100,7 @@ const data = {
       .maybeSingle();
   },
 
-  /** Sender et anonymt innspill. Returnerer bare om det gikk – innspill kan ikke leses tilbake. */
+  /** Sender et innspill uten navn. Returnerer bare om det gikk – innspill kan ikke leses tilbake. */
   async sendInnspill(gudstjenesteId, tekst) {
     return supabase.from('innspill').insert([{ gudstjeneste_id: gudstjenesteId, svar_tekst: tekst }]);
   },
@@ -187,7 +187,9 @@ function SvarSkjema({ gudstjeneste }) {
     } catch (err) {
       console.log('[KirkePulsen] Kunne ikke sende innspill:', err?.code, err?.message);
       // 42501: databasen avviste innspillet, normalt fordi svarfristen gikk ut mens appen var åpen.
-      const melding = err?.code === '42501'
+      const melding = err?.message === 'innspill_avvist_ordliste'
+        ? 'Innspillet inneholder ord som ikke er tillatt, og ble ikke sendt. Skriv det gjerne om. Teksten din er tatt vare på.'
+        : err?.code === '42501'
         ? 'Svarfristen er passert, så innspillet ble ikke sendt. Du kan svare på neste gudstjeneste når presten har publisert den.'
         : /fetch|network/i.test(err?.message ?? '')
           ? 'Fikk ikke kontakt. Sjekk nettforbindelsen og prøv igjen. Teksten din er tatt vare på.'
@@ -214,11 +216,11 @@ function SvarSkjema({ gudstjeneste }) {
         textAlignVertical="top"
         accessibilityLabel="Ditt svar til presten"
         accessibilityLabelledBy="svarEtikett"
-        accessibilityHint="Svaret sendes anonymt"
+        accessibilityHint="Svaret sendes uten navn"
         editable={status !== 'sender'}
       />
       <Text style={stil.hjelp} accessibilityLiveRegion={igjen < 100 ? 'polite' : 'none'}>
-        {igjen < 200 ? `${igjen} tegn igjen` : 'Svaret er anonymt. Bare presten i menigheten kan lese det.'}
+        {igjen < 200 ? `${igjen} tegn igjen` : 'Svaret sendes uten navn. Presten i menigheten kan lese det, og administrator har teknisk tilgang.'}
       </Text>
 
       {status === 'feil' ? <Melding type="feil">{feilmelding}</Melding> : null}
@@ -227,7 +229,7 @@ function SvarSkjema({ gudstjeneste }) {
         tittel={status === 'sender' ? 'Sender …' : 'Send til presten'}
         onPress={send}
         opptatt={status === 'sender'}
-        hint="Sender svaret ditt anonymt"
+        hint="Sender svaret ditt uten navn"
       />
     </View>
   );

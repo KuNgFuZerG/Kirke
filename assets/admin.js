@@ -176,6 +176,11 @@
     async slett(id) {
       return db.from('gudstjeneste').delete().eq('id', id).select('id');
     },
+
+    /** Fjerner et innspill for godt. Tilgangsreglene tillater det bare for prester i riktig menighet. */
+    async fjernInnspill(id) {
+      return db.from('innspill').delete().eq('id', id).select('id');
+    },
   };
 
   // ---------------------------------------------------------------------------
@@ -284,6 +289,35 @@
     neiKnapp.focus();
   }
 
+  /** Samme mønster som for gudstjenester: bekreftelse inne i listen, ingen nettleservindu. */
+  function visFjernBekreftelse(rad, innspill) {
+    rad.querySelector('.bekreft-slett')?.remove();
+    const jaKnapp = el('button', { type: 'button', class: 'knapp knapp-fare' }, 'Fjern innspillet');
+    const neiKnapp = el('button', { type: 'button', class: 'knapp knapp-rolig' }, 'Behold');
+    const boks = el('div', { class: 'bekreft-slett', role: 'group', 'aria-label': 'Bekreft fjerning' },
+      el('p', {}, 'Fjerne dette innspillet for godt? Det kan ikke hentes tilbake.'),
+      el('div', { class: 'knapperad' }, jaKnapp, neiKnapp),
+    );
+    neiKnapp.addEventListener('click', () => { boks.remove(); rad.querySelector('.fare')?.focus(); });
+    jaKnapp.addEventListener('click', () => fjernInnspill(innspill, jaKnapp));
+    rad.append(boks);
+    neiKnapp.focus();
+  }
+
+  async function fjernInnspill(innspill, knapp) {
+    settOpptatt(knapp, true, 'Fjerner …');
+    const { data: fjernet, error } = await data.fjernInnspill(innspill.id);
+    if (error || !fjernet?.length) {
+      loggFeil('fjerning av innspill', error);
+      settOpptatt(knapp, false);
+      visMelding(`Innspillet ble ikke fjernet: ${forklarFeil(error || { message: 'Fant ikke innspillet.' })}`, 'feil');
+      return;
+    }
+    visMelding('Innspillet er fjernet.', 'ok');
+    await lastMenighet();
+    $('innspillTittel').focus?.();
+  }
+
   function tegnInnspill(rader) {
     const liste = $('innspillListe');
     liste.removeAttribute('aria-busy');
@@ -308,10 +342,18 @@
         el('p', { class: 'gudstjeneste-dato' },
           `${lesbarDato(g.dato_tid)} (${innspill.length} innspill)`),
         el('ul', { class: 'innspill-liste' },
-          innspill.map((i) => el('li', { class: 'innspill' },
-            el('blockquote', {}, i.svar_tekst),
-            el('p', { class: 'innspill-tid' }, `Sendt ${kortDato.format(new Date(i.sendt_tidspunkt))}`),
-          )),
+          innspill.map((i) => {
+            const sendt = `Sendt ${kortDato.format(new Date(i.sendt_tidspunkt))}`;
+            const rad = el('li', { class: 'innspill' },
+              el('blockquote', {}, i.svar_tekst),
+              el('p', { class: 'innspill-tid' }, sendt),
+            );
+            rad.append(el('div', { class: 'knapperad' },
+              el('button', { type: 'button', class: 'knapp-lenke fare', onclick: () => visFjernBekreftelse(rad, i),
+                'aria-label': `Fjern innspill sendt ${kortDato.format(new Date(i.sendt_tidspunkt))}` }, 'Fjern'),
+            ));
+            return rad;
+          }),
         ),
       ),
     ));
@@ -513,6 +555,7 @@
     $('dato').addEventListener('input', () => { settFeltFeil('dato', ''); oppdaterFristForklaring(); });
     $('tittel').addEventListener('input', () => settFeltFeil('tittel', ''));
     $('kommendeTittel').setAttribute('tabindex', '-1');
+    $('innspillTittel').setAttribute('tabindex', '-1');
 
     if (!db) {
       visSkjerm('innlogging');

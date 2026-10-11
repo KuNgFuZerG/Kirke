@@ -234,6 +234,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
   white-space: pre-line;
 }
 .innspill-tid { margin: .75rem 0 0; color: var(--dempet); font-size: .9375rem; }
+.innspill .knapperad { margin-top: .25rem; }
 
 /* ---------- Små skjermer ---------- */
 
