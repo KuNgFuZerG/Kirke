@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KirkePulsen - Prestens Dashbord</title>
+    <!-- Supabase Bibliotek -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #F4F6F8; color: #2D3748; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: #FFFFFF; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        h1 { color: #1A202C; font-size: 24px; margin-bottom: 5px; }
+        .subtitle { color: #718096; margin-bottom: 25px; font-size: 14px; }
+        .section { margin-bottom: 35px; border-bottom: 1px solid #E2E8F0; padding-bottom: 25px; }
+        label { display: block; font-weight: bold; margin-bottom: 6px; color: #4A5568; font-size: 14px; }
+        input, textarea { width: 100%; padding: 10px; border: 1px solid #CBD5E0; border-radius: 6px; font-size: 15px; margin-bottom: 15px; box-sizing: border-box; }
+        textarea { height: 90px; resize: vertical; }
+        button { background-color: #3182CE; color: white; border: none; padding: 12px 20px; font-size: 16px; font-weight: bold; border-radius: 6px; cursor: pointer; }
+        button:hover { background-color: #2B6CB0; }
+        .innspill-card { background: #EBF8FF; border-left: 4px solid #3182CE; padding: 12px 16px; border-radius: 4px; margin-bottom: 10px; }
+        .innspill-tid { font-size: 12px; color: #718096; margin-bottom: 4px; }
+        .innspill-tekst { font-size: 15px; color: #2D3748; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>KirkePulsen – Prestens Dashbord</h1>
+    <div class="subtitle">Høvåg kirke, Lillesand</div>
+
+    <!-- Seksjon for å opprette ny gudstjeneste -->
+    <div class="section">
+        <h2>📅 Opprett ny gudstjeneste / spørsmål</h2>
+        <label for="tittel">Gudstjeneste tittel:</label>
+        <input type="text" id="tittel" placeholder="F.eks. Familiegudstjeneste" value="Søndagsgudstjeneste i Høvåg">
+
+        <label for="sporsmal">Prestens spørsmål til menigheten:</label>
+        <textarea id="sporsmal" placeholder="Hva ønsker du å fokusere på i prekenen?">Hva betyr tilgivelse for deg i hverdagen akkurat nå?</textarea>
+
+        <label for="dato">Dato og tid:</label>
+        <input type="datetime-local" id="dato">
+
+        <button onclick="opprettGudstjeneste()">Publiser til menigheten</button>
+    </div>
+
+    <!-- Seksjon for å lese innspill -->
+    <div class="section">
+        <h2>📥 Innkommende innspill fra menigheten</h2>
+        <div id="innspillListe"><p style="color: #718096;">Laster innspill...</p></div>
+    </div>
+</div>
+
+<script>
+    // Kobling til Supabase (samme som i appen)
+    const SUPABASE_URL = 'https://esjmuexwbhrbgcktiis.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_A3k2xBiT15N4S9NPunqHoA_Mn8Xskxk';
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Sett standarddato til neste søndag kl 11:00
+    window.onload = function() {
+        const d = new Date();
+        d.setDate(d.getDate() + (7 - d.getDay()) % 7);
+        d.setHours(11, 0, 0, 0);
+        document.getElementById('dato').value = d.toISOString().slice(0, 16);
+        hentInnspill();
+    };
+
+    async function opprettGudstjeneste() {
+        const tittel = document.getElementById('tittel').value;
+        const sporsmal = document.getElementById('sporsmal').value;
+        const dato = document.getElementById('dato').value;
+
+        if (!tittel || !dato) {
+            alert('Vennligst fyll ut tittel og dato.');
+            return;
+        }
+
+        // Hent menighet-ID for Høvåg kirke
+        const { data: menighetData } = await supabase.from('menighet').select('id').limit(1).single();
+        if (!menighetData) {
+            alert('Fant ikke menighet i databasen.');
+            return;
+        }
+
+        const { error } = await supabase.from('gudstjeneste').insert([
+            {
+                menighet_id: menighetData.id,
+                tittel: tittel,
+                dato_tid: new Date(dato).toISOString(),
+                svarfrist: new Date(new Date(dato).getTime() - 24 * 60 * 60 * 1000).toISOString(), // 24 timer før
+                sporsmal_fra_prest: sporsmal
+            }
+        ]);
+
+        if (error) {
+            alert('Kunne ikke opprette gudstjeneste: ' + error.message);
+        } else {
+            alert('Gudstjeneste og spørsmål er publisert til menigheten!');
+            location.reload();
+        }
+    }
+
+    async function hentInnspill() {
+        const { data, error } = await supabase
+            .from('innspill')
+            .select('*, gudstjeneste(tittel)')
+            .order('sendt_tidspunkt', { ascending: false });
+
+        const listeDiv = document.getElementById('innspillListe');
+        
+        if (error || !data || data.length === 0) {
+            listeDiv.innerHTML = '<p style="color: #718096;">Ingen innspill mottatt ennå.</p>';
+            return;
+        }
+
+        listeDiv.innerHTML = data.map(item => `
+            <div class="innspill-card">
+                <div class="innspill-tid">📅 ${new Date(item.sendt_tidspunkt).toLocaleString('no-NO')}</div>
+                <div class="innspill-tekst">"${item.svar_tekst}"</div>
+            </div>
+        `).join('');
+    }
+</script>
+
+</body>
+</html>
