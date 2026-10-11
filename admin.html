@@ -14,6 +14,7 @@
         .topplinje { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
         .section { margin-bottom: 35px; border-bottom: 1px solid #E2E8F0; padding-bottom: 25px; }
         label { display: block; font-weight: bold; margin-bottom: 6px; color: #4A5568; font-size: 14px; }
+        select { width: 100%; padding: 10px; border: 1px solid #CBD5E0; border-radius: 6px; font-size: 15px; background: #FFFFFF; box-sizing: border-box; }
         input, textarea { width: 100%; padding: 10px; border: 1px solid #CBD5E0; border-radius: 6px; font-size: 15px; margin-bottom: 15px; box-sizing: border-box; }
         textarea { height: 90px; resize: vertical; }
         button { background-color: #3182CE; color: white; border: none; padding: 12px 20px; font-size: 16px; font-weight: bold; border-radius: 6px; cursor: pointer; }
@@ -57,6 +58,12 @@
 
     <!-- Dashbordet (vises bare for innlogget prest) -->
     <div id="dashbordSeksjon" class="skjult">
+        <!-- Menighetsvelger: vises bare når presten har flere menigheter -->
+        <div id="velgerSeksjon" class="section skjult">
+            <label for="menighetVelger">Du jobber nå i:</label>
+            <select id="menighetVelger" onchange="byttMenighet(this.value)"></select>
+        </div>
+
         <div class="section">
             <h2>📅 Opprett ny gudstjeneste / spørsmål</h2>
             <label for="tittel">Gudstjeneste tittel:</label>
@@ -89,7 +96,11 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_A3k2xBiT15N4S9NPunqHoA_Mn8Xskxk';
 
     const LOGG = '[KirkePulsen]';
-    let prest = null; // { user_id, menighet_id, navn, menighet: { navn, kommune } }
+    // Alle menigheter den innloggede presten hører til: [{ menighet_id, navn, menighet: { navn, kommune } }]
+    let prestRoller = [];
+    // Menigheten presten jobber i akkurat nå (en av radene over)
+    let prest = null;
+    const VALGT_NOKKEL = 'kirkepulsen.valgtMenighet';
 
     // ---------- Hjelpefunksjoner ----------
 
@@ -176,6 +187,7 @@
 
     function visInnlogging() {
         prest = null;
+        prestRoller = [];
         vis('innloggingSeksjon', true);
         vis('dashbordSeksjon', false);
         vis('loggUtKnapp', false);
@@ -212,21 +224,20 @@
         visInnlogging();
     }
 
-    // Finner hvilken menighet den innloggede brukeren er prest i.
-    // Databasen viser bare brukerens egen rad i tabellen `prest`.
+    // Finner hvilke menigheter den innloggede brukeren er prest i.
+    // Databasen viser bare brukerens egne rader i tabellen `prest`.
     async function startDashbord(bruker) {
         const { data, error } = await _supabase
             .from('prest')
-            .select('user_id, menighet_id, navn, menighet(navn, kommune)')
-            .eq('user_id', bruker.id)
-            .maybeSingle();
+            .select('menighet_id, navn, menighet(navn, kommune)')
+            .eq('user_id', bruker.id);
 
         if (error) {
             loggFeil('henting av prest', error);
             visMelding('Kunne ikke hente prestetilgang: ' + escapeHtml(error.message));
             return;
         }
-        if (!data) {
+        if (!data || data.length === 0) {
             console.warn(`${LOGG} Bruker ${bruker.email} (${bruker.id}) står ikke i tabellen prest.`);
             visMelding(`Brukeren <b>${escapeHtml(bruker.email)}</b> er logget inn, men er ikke registrert som prest i noen menighet. Kontakt administrator.`);
             vis('innloggingSeksjon', false);
@@ -235,12 +246,35 @@
             return;
         }
 
-        prest = data;
-        console.info(`${LOGG} Innlogget som prest i ${data.menighet?.navn} (${data.menighet_id})`);
-        $('menighetNavn').textContent = [data.menighet?.navn, data.menighet?.kommune].filter(Boolean).join(', ');
+        prestRoller = data.sort((a, b) => (a.menighet?.navn || '').localeCompare(b.menighet?.navn || '', 'no'));
+        console.info(`${LOGG} Innlogget som prest i ${prestRoller.length} menighet(er):`, prestRoller.map(r => r.menighet?.navn));
+
+        // Fyll velgeren. Den vises bare når det er mer enn én menighet å velge mellom.
+        $('menighetVelger').innerHTML = prestRoller.map(r =>
+            `<option value="${r.menighet_id}">${escapeHtml([r.menighet?.navn, r.menighet?.kommune].filter(Boolean).join(', '))}</option>`
+        ).join('');
+        vis('velgerSeksjon', prestRoller.length > 1);
+
+        // Husk forrige valg i denne nettleseren (bare en bekvemmelighet – kan mangle).
+        let lagret = null;
+        try { lagret = localStorage.getItem(VALGT_NOKKEL); } catch (e) {}
+        const start = prestRoller.find(r => r.menighet_id === lagret) || prestRoller[0];
+
         vis('innloggingSeksjon', false);
         vis('dashbordSeksjon', true);
         vis('loggUtKnapp', true);
+        byttMenighet(start.menighet_id);
+    }
+
+    function byttMenighet(menighetId) {
+        const valgt = prestRoller.find(r => r.menighet_id === menighetId);
+        if (!valgt) return;
+        prest = valgt;
+        $('menighetVelger').value = menighetId;
+        try { localStorage.setItem(VALGT_NOKKEL, menighetId); } catch (e) {}
+        $('menighetNavn').textContent = [valgt.menighet?.navn, valgt.menighet?.kommune].filter(Boolean).join(', ');
+        console.info(`${LOGG} Jobber nå i ${valgt.menighet?.navn} (${menighetId})`);
+        skjulMelding();
         hentInnspill();
     }
 
@@ -297,11 +331,17 @@
     async function hentInnspill() {
         const listeDiv = $('innspillListe');
         try {
-            // Tilgangsreglene sørger for at presten bare får innspill fra egen menighet.
+            // Tilgangsreglene gir bare innspill fra prestens egne menigheter.
+            // Her filtrerer vi i tillegg på den menigheten som er valgt nå.
+            const valgtId = prest?.menighet_id;
             const { data, error } = await _supabase
                 .from('innspill')
-                .select('id, svar_tekst, sendt_tidspunkt, gudstjeneste(tittel, dato_tid)')
+                .select('id, svar_tekst, sendt_tidspunkt, gudstjeneste!inner(tittel, dato_tid, menighet_id)')
+                .eq('gudstjeneste.menighet_id', valgtId)
                 .order('sendt_tidspunkt', { ascending: false });
+
+            // Hvis presten har byttet menighet mens svaret var underveis, ignorer svaret.
+            if (prest?.menighet_id !== valgtId) return;
 
             if (error) {
                 loggFeil('henting av innspill', error);
